@@ -88,6 +88,9 @@ type ApplicationResult = {
   수험번호: string;
   전형명: string;
   모집단위명: string;
+  학생부반영비율: number;
+  학생부점수범위: string;
+  적용계산식: string;
 };
 
 function formatDifference(
@@ -300,6 +303,21 @@ export default function Home() {
                   <span>지원학과</span>
                   <strong>{result.data.application.모집단위명}</strong>
                 </div>
+
+                <div className="summary-item-emphasis">
+                  <span>학생부 반영비율</span>
+                  <strong>{result.data.application.학생부반영비율}%</strong>
+                </div>
+
+                <div>
+                  <span>학생부 점수범위</span>
+                  <strong>{result.data.application.학생부점수범위}</strong>
+                </div>
+
+                <div className="summary-item-formula">
+                  <span>적용 계산식</span>
+                  <strong>{result.data.application.적용계산식}</strong>
+                </div>
               </div>
             </section>
           )}
@@ -318,7 +336,7 @@ export default function Home() {
                     <th>석차등급</th>
                     <th>Z점수</th>
                     <th>적용등급</th>
-                    <th>가중값</th>
+                    <th>등급가중값</th>
                     {/* <th>검증</th> */}
                     <th>반영 여부</th>
                   </tr>
@@ -363,8 +381,8 @@ export default function Home() {
                     <th>학기평균등급</th>
                     <th>재계산 평균등급</th>
                     <th>이수단위 검증</th>
-                    <th>가중합 검증</th>
-                    <th>평균 검증</th>
+                    <th>등급가중합 검증</th>
+                    <th>학기평균 검증</th>
                   </tr>
                 </thead>
 
@@ -401,7 +419,7 @@ export default function Home() {
                     <th>최종학기등급</th>
                     <th>우수학기순위</th>
                     <th>기대순위</th>
-                    <th>검증</th>
+                    <th>우수학기순위 검증</th>
                     <th>반영 여부</th>
                   </tr>
                 </thead>

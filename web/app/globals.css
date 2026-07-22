@@ -612,3 +612,29 @@ th {
     width: 100%;
   }
 }
+
+/* 지원정보의 학생부 반영 기준 강조용 */
+.summary-grid .summary-item-emphasis {
+  background: #f3f7ff;
+  border-color: #bfd2ff;
+}
+
+.summary-grid .summary-item-emphasis strong {
+  color: #1d4ed8;
+}
+
+.summary-grid .summary-item-formula {
+  grid-column: span 2;
+  background: #f8fafc;
+}
+
+.summary-grid .summary-item-formula strong {
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+@media (max-width: 900px) {
+  .summary-grid .summary-item-formula {
+    grid-column: span 1;
+  }
+}
