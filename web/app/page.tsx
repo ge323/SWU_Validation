@@ -104,6 +104,39 @@ function formatDifference(
   return difference.toFixed(6);
 }
 
+const universities = [
+  {
+    code: "swu",
+    shortName: "숭의여대",
+    fullName: "숭의여자대학교",
+    enabled: true,
+  },
+  {
+    code: "gcu",
+    shortName: "가천대",
+    fullName: "가천대학교",
+    enabled: false,
+  },
+  {
+    code: "snut",
+    shortName: "서울과기대",
+    fullName: "서울과학기술대학교",
+    enabled: false,
+  },
+  {
+    code: "ku",
+    shortName: "고려대",
+    fullName: "고려대학교",
+    enabled: false,
+  },
+  {
+    code: "khu",
+    shortName: "경희대",
+    fullName: "경희대학교",
+    enabled: false,
+  },
+];
+
 export default function Home() {
   const [examNo, setExamNo] = useState("01510001");
   const [result, setResult] = useState<VerifyResponse | null>(null);
@@ -149,25 +182,92 @@ export default function Home() {
   }
 
   return (
-    <main className="page">
-      <section className="search-card">
-        <h1>학생부 성적 검증</h1>
+    <>
+      <header className="site-header">
+        <div className="header-inner">
+          <div className="brand">
 
-        <form onSubmit={handleSubmit} className="search-form">
-          <input
-            type="text"
-            value={examNo}
-            onChange={(event) => setExamNo(event.target.value)}
-            placeholder="수험번호 입력"
-          />
+            <div className="brand-text">
+              <strong>대학 입학성적 검증 시스템</strong>
+            </div>
+          </div>
 
-          <button type="submit" disabled={loading}>
-            {loading ? "조회 중..." : "검증하기"}
-          </button>
-        </form>
+          <nav className="university-nav" aria-label="대학교 선택">
+            {universities.map((university) => (
+              <button
+                key={university.code}
+                type="button"
+                className={`university-nav-item ${
+                  university.code === "swu" ? "active" : ""
+                }`}
+                disabled={!university.enabled}
+                title={
+                  university.enabled
+                    ? university.fullName
+                    : `${university.fullName} 준비 중`
+                }
+              >
+                {university.shortName}
 
-        {message && <p className="error-message">{message}</p>}
-      </section>
+                {!university.enabled && (
+                  <span className="coming-soon">준비 중</span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      <main className="page">
+        <section className="search-card">
+          <div className="search-card-header">
+            <div>
+              <span className="university-name">
+                숭의여자대학교
+              </span>
+
+              <h1>학생부 성적 검증</h1>
+
+              <p>
+                수험번호를 입력하면 성적 산출 과정과 최종 점수를 확인할 수 있습니다.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="search-form">
+            <div className="input-group">
+              <label htmlFor="examNo">수험번호</label>
+
+              <input
+                id="examNo"
+                type="text"
+                value={examNo}
+                onChange={(event) => setExamNo(event.target.value)}
+                placeholder="예: 01510001"
+                autoComplete="off"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="verify-button"
+              disabled={loading}
+            >
+              <span className="button-icon">
+                {loading ? "⋯" : "✓"}
+              </span>
+
+              <span>{loading ? "검증 중..." : "성적 검증하기"}</span>
+            </button>
+          </form>
+
+          {message && (
+            <div className="search-message">
+              <span>!</span>
+              <p>{message}</p>
+            </div>
+          )}
+        </section>
 
       {result && (
         <>
@@ -389,9 +489,9 @@ export default function Home() {
                   <span>차이</span>
                   <strong>
                     {formatDifference(
-                      result.data.finalScore.학생부점수_1000점,
-                      result.data.finalScore.재계산_학생부점수_1000점,
-                      result.data.finalScore.최종점수검증
+                      result.data.finalScore.우수2개학기_평균등급,
+                      result.data.finalScore.재계산_우수2개학기_평균등급,
+                      result.data.finalScore.우수학기평균검증
                     )}
                   </strong>
                 </div>
@@ -415,9 +515,9 @@ export default function Home() {
                   <span>차이</span>
                   <strong>
                     {formatDifference(
-                      result.data.finalScore.우수2개학기_평균등급,
-                      result.data.finalScore.재계산_우수2개학기_평균등급,
-                      result.data.finalScore.우수학기평균검증
+                      result.data.finalScore.학생부점수_1000점,
+                      result.data.finalScore.재계산_학생부점수_1000점,
+                      result.data.finalScore.최종점수검증
                     )}
                   </strong>
                 </div>
@@ -427,6 +527,7 @@ export default function Home() {
         )}
         </>
       )}
-    </main>
+      </main>
+    </>
   );
 }
