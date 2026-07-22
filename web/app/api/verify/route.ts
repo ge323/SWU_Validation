@@ -25,15 +25,17 @@ export async function GET(request: Request) {
     ? result.recordsets
     : [];
 
-    const subjectResults = recordsets[0] ?? [];
-    const semesterResults = recordsets[1] ?? [];
-    const rankingResults = recordsets[2] ?? [];
-    const finalScoreResults = recordsets[3] ?? [];
+    const applicationResults = recordsets[0] ?? [];
+    const subjectResults = recordsets[1] ?? [];
+    const semesterResults = recordsets[2] ?? [];
+    const rankingResults = recordsets[3] ?? [];
+    const finalScoreResults = recordsets[4] ?? [];
 
     return NextResponse.json({
         message: "성적 검증이 완료되었습니다.",
         examNo,
         data: {
+            application: applicationResults[0] ?? null,
             subjects: subjectResults,
             semesters: semesterResults,
             rankings: rankingResults,

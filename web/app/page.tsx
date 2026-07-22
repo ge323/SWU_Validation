@@ -15,7 +15,7 @@ type SubjectResult = {
   Z점수: number | null;
   적용등급: number | null;
   계산된_과목별등급가중값: number | null;
-  과목별가중값검증: string;
+  // 과목별가중값검증: string;
   등급산출방법: string | null;
   반영여부: string | null;
 };
@@ -74,11 +74,20 @@ type VerifyResponse = {
   message: string;
   examNo: string;
   data: {
+    application: ApplicationResult | null;
     subjects: SubjectResult[];
     semesters: SemesterResult[];
     rankings: RankingResult[];
     finalScore: FinalScoreResult | null;
   };
+};
+
+type ApplicationResult = {
+  입학연도: number;
+  모집시기명: string;
+  수험번호: string;
+  전형명: string;
+  모집단위명: string;
 };
 
 export default function Home() {
@@ -148,6 +157,38 @@ export default function Home() {
 
       {result && (
         <>
+        {result.data.application && (
+            <section className="result-section">
+              <h2>지원정보</h2>
+
+              <div className="summary-grid">
+                <div>
+                  <span>입학연도</span>
+                  <strong>{result.data.application.입학연도}</strong>
+                </div>
+
+                <div>
+                  <span>모집시기</span>
+                  <strong>{result.data.application.모집시기명}</strong>
+                </div>
+
+                <div>
+                  <span>수험번호</span>
+                  <strong>{result.data.application.수험번호}</strong>
+                </div>
+
+                <div>
+                  <span>전형</span>
+                  <strong>{result.data.application.전형명}</strong>
+                </div>
+
+                <div>
+                  <span>지원학과</span>
+                  <strong>{result.data.application.모집단위명}</strong>
+                </div>
+              </div>
+            </section>
+          )}
           <section className="result-section">
             <h2>과목별 성적 계산</h2>
 
@@ -164,7 +205,7 @@ export default function Home() {
                     <th>Z점수</th>
                     <th>적용등급</th>
                     <th>가중값</th>
-                    <th>검증</th>
+                    {/* <th>검증</th> */}
                     <th>반영 여부</th>
                   </tr>
                 </thead>
@@ -183,7 +224,7 @@ export default function Home() {
                       <td>{subject.Z점수 ?? "-"}</td>
                       <td>{subject.적용등급 ?? "-"}</td>
                       <td>{subject.계산된_과목별등급가중값 ?? "-"}</td>
-                      <td>{subject.과목별가중값검증}</td>
+                      {/* <td>{subject.과목별가중값검증}</td> */}
                       <td>{subject.반영여부 ?? "-"}</td>
                     </tr>
                   ))}
@@ -269,56 +310,109 @@ export default function Home() {
           </section>
 
           {result.data.finalScore && (
-            <section className="result-section">
-              <h2>최종 학생부점수</h2>
+          <section className="result-section">
+            <div className="section-header">
+              <div>
+                <h2>최종 학생부점수</h2>
+                <p>우수학기 선정 결과와 최종 환산점수를 확인합니다.</p>
+              </div>
 
-              <div className="summary-grid">
-                <div>
-                  <span>우수학기 1</span>
+              <span
+                className={
+                  result.data.finalScore.최종점수검증 === "일치"
+                    ? "status-badge status-success"
+                    : "status-badge status-error"
+                }
+              >
+                {result.data.finalScore.최종점수검증 === "일치"
+                  ? "검증 완료"
+                  : "재확인 필요"}
+              </span>
+            </div>
+
+            <div className="final-score-grid">
+              <div className="score-card">
+                <span className="score-label">우수학기 1</span>
+
+                <strong className="score-main">
+                  {result.data.finalScore.우수학기1_학년}학년{" "}
+                  {result.data.finalScore.우수학기1_학기}학기
+                </strong>
+
+                <span className="score-detail">
+                  석차등급 {result.data.finalScore.우수학기1_등급}
+                </span>
+              </div>
+
+              <div className="score-card">
+                <span className="score-label">우수학기 2</span>
+
+                <strong className="score-main">
+                  {result.data.finalScore.우수학기2_학년}학년{" "}
+                  {result.data.finalScore.우수학기2_학기}학기
+                </strong>
+
+                <span className="score-detail">
+                  석차등급 {result.data.finalScore.우수학기2_등급}
+                </span>
+              </div>
+
+              <div className="score-card score-card-highlight">
+                <span className="score-label">우수 2개 학기 평균등급</span>
+
+                <strong className="score-main">
+                  {result.data.finalScore.우수2개학기_평균등급}
+                </strong>
+
+                <div className="comparison-row">
+                  <span>재계산값</span>
                   <strong>
-                    {result.data.finalScore.우수학기1_학년}학년{" "}
-                    {result.data.finalScore.우수학기1_학기}학기 /{" "}
-                    {result.data.finalScore.우수학기1_등급}
+                    {result.data.finalScore.재계산_우수2개학기_평균등급}
                   </strong>
                 </div>
 
-                <div>
-                  <span>우수학기 2</span>
+                <div className="comparison-row">
+                  <span>차이</span>
                   <strong>
-                    {result.data.finalScore.우수학기2_학년}학년{" "}
-                    {result.data.finalScore.우수학기2_학기}학기 /{" "}
-                    {result.data.finalScore.우수학기2_등급}
+                    {Math.abs(
+                      Number(result.data.finalScore.우수2개학기_평균등급) -
+                        Number(
+                          result.data.finalScore.재계산_우수2개학기_평균등급
+                        )
+                    ).toFixed(6)}
                   </strong>
-                </div>
-
-                <div>
-                  <span>우수학기 평균등급</span>
-                  <strong>
-                    {result.data.finalScore.우수2개학기_평균등급}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>학생부점수</span>
-                  <strong>
-                    {result.data.finalScore.학생부점수_1000점}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>평균 검증</span>
-                  <strong>
-                    {result.data.finalScore.우수학기평균검증}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>최종점수 검증</span>
-                  <strong>{result.data.finalScore.최종점수검증}</strong>
                 </div>
               </div>
-            </section>
-          )}
+
+              <div className="score-card score-card-primary">
+                <span className="score-label">최종 학생부점수</span>
+
+                <strong className="score-main score-main-large">
+                  {result.data.finalScore.학생부점수_1000점}
+                </strong>
+
+                <div className="comparison-row">
+                  <span>재계산값</span>
+                  <strong>
+                    {result.data.finalScore.재계산_학생부점수_1000점}
+                  </strong>
+                </div>
+
+                <div className="comparison-row">
+                  <span>차이</span>
+                  <strong>
+                    {Math.abs(
+                      Number(result.data.finalScore.학생부점수_1000점) -
+                        Number(
+                          result.data.finalScore.재계산_학생부점수_1000점
+                        )
+                    ).toFixed(6)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
         </>
       )}
     </main>
