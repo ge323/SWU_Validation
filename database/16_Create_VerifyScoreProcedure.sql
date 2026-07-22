@@ -1,8 +1,11 @@
 USE [SWU_Validation];
 GO
 
+CREATE OR ALTER PROCEDURE dbo.usp_VerifyScore
+    @수험번호 nvarchar(50)
+AS
+BEGIN
 SET NOCOUNT ON;
-GO
 
 /* ===========================================================
    파일명: 15_Verify_ScoreCalculation.sql
@@ -19,7 +22,7 @@ GO
    6. 최종 학생부 점수 검증
    =========================================================== */
 
-DECLARE @수험번호 nvarchar(50) = N'01510001';
+--DECLARE @수험번호 nvarchar(50) = N'01510001';
 
 
 /* ===========================================================
@@ -250,7 +253,6 @@ ORDER BY
    최종학기등급이 가장 낮은 2개 학기와
    실제 우수학기순위 1, 2가 일치하는지 확인
    =========================================================== */
-
 ;WITH ExpectedRanking AS
 (
     SELECT
@@ -411,4 +413,5 @@ SELECT
 FROM dbo.vw_FinalScore AS F
 
 WHERE F.수험번호 = @수험번호;
+END;
 GO
