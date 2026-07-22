@@ -90,6 +90,20 @@ type ApplicationResult = {
   모집단위명: string;
 };
 
+function formatDifference(
+  value1: number,
+  value2: number,
+  verificationResult: string
+) {
+  if (verificationResult === "일치") {
+    return "0.000000";
+  }
+
+  const difference = Math.abs(Number(value1) - Number(value2));
+
+  return difference.toFixed(6);
+}
+
 export default function Home() {
   const [examNo, setExamNo] = useState("01510001");
   const [result, setResult] = useState<VerifyResponse | null>(null);
@@ -374,12 +388,11 @@ export default function Home() {
                 <div className="comparison-row">
                   <span>차이</span>
                   <strong>
-                    {Math.abs(
-                      Number(result.data.finalScore.우수2개학기_평균등급) -
-                        Number(
-                          result.data.finalScore.재계산_우수2개학기_평균등급
-                        )
-                    ).toFixed(6)}
+                    {formatDifference(
+                      result.data.finalScore.학생부점수_1000점,
+                      result.data.finalScore.재계산_학생부점수_1000점,
+                      result.data.finalScore.최종점수검증
+                    )}
                   </strong>
                 </div>
               </div>
@@ -401,12 +414,11 @@ export default function Home() {
                 <div className="comparison-row">
                   <span>차이</span>
                   <strong>
-                    {Math.abs(
-                      Number(result.data.finalScore.학생부점수_1000점) -
-                        Number(
-                          result.data.finalScore.재계산_학생부점수_1000점
-                        )
-                    ).toFixed(6)}
+                    {formatDifference(
+                      result.data.finalScore.우수2개학기_평균등급,
+                      result.data.finalScore.재계산_우수2개학기_평균등급,
+                      result.data.finalScore.우수학기평균검증
+                    )}
                   </strong>
                 </div>
               </div>
