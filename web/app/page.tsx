@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 type SubjectResult = {
@@ -113,6 +115,7 @@ const universities = [
     shortName: "숭의여대",
     fullName: "숭의여자대학교",
     enabled: true,
+    href: "/",
   },
   {
     code: "gcu",
@@ -124,7 +127,8 @@ const universities = [
     code: "snut",
     shortName: "서울과기대",
     fullName: "서울과학기술대학교",
-    enabled: false,
+    enabled: true,
+    href: "/snut",
   },
   {
     code: "ku",
@@ -141,6 +145,7 @@ const universities = [
 ];
 
 export default function Home() {
+  const pathname = usePathname();
   const [examNo, setExamNo] = useState("01510001");
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [message, setMessage] = useState("");
@@ -196,27 +201,31 @@ export default function Home() {
           </div>
 
           <nav className="university-nav" aria-label="대학교 선택">
-            {universities.map((university) => (
-              <button
-                key={university.code}
-                type="button"
-                className={`university-nav-item ${
-                  university.code === "swu" ? "active" : ""
-                }`}
-                disabled={!university.enabled}
-                title={
-                  university.enabled
-                    ? university.fullName
-                    : `${university.fullName} 준비 중`
-                }
-              >
-                {university.shortName}
-
-                {!university.enabled && (
+            {universities.map((university) =>
+              university.enabled ? (
+                <Link
+                  key={university.code}
+                  href={university.href ?? "/"}
+                  className={`university-nav-item ${
+                    pathname === (university.href || "/") ? "active" : ""
+                  }`}
+                  title={university.fullName}
+                >
+                  {university.shortName}
+                </Link>
+              ) : (
+                <button
+                  key={university.code}
+                  type="button"
+                  className="university-nav-item"
+                  disabled
+                  title={`${university.fullName} 준비 중`}
+                >
+                  {university.shortName}
                   <span className="coming-soon">준비 중</span>
-                )}
-              </button>
-            ))}
+                </button>
+              )
+            )}
           </nav>
         </div>
       </header>
