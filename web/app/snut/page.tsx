@@ -149,8 +149,8 @@ const universities = [
   },
   {
     code: "ku",
-    shortName: "고려대",
-    fullName: "고려대학교",
+    shortName: "건국대",
+    fullName: "건국대학교",
     enabled: false,
   },
   {
