@@ -168,7 +168,10 @@ export default function Home() {
       setResult(null);
 
       const response = await fetch(
-        `/api/verify?examNo=${encodeURIComponent(trimmedExamNo)}`
+        `/api/swu/verify?examNo=${encodeURIComponent(trimmedExamNo)}`,
+        {
+          cache: "no-store",
+        }
       );
 
       const body = await response.json();

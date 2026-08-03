@@ -251,7 +251,7 @@ function getFinalStatus(finalResult: FinalResult) {
 export default function Home() {
   const pathname = usePathname();
 
-  const [examNo, setExamNo] = useState("");
+  const [examNo, setExamNo] = useState("26149800011");
 
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [message, setMessage] = useState("");
