@@ -373,10 +373,9 @@ export default function Home() {
           <div className="search-card-header">
             <div>
               <span className="university-name">서울과학기술대학교</span>
-              <h1>수시 성적 검증</h1>
+              <h1>학생부 성적 검증</h1>
               <p>
-                모든 수시 전형을 대상으로 과목별 반영값, 계산 중간값과
-                학생별 환산점수를 확인합니다.
+                수험번호를 입력하면 성적 산출 과정과 최종 점수를 확인할 수 있습니다.
               </p>
             </div>
           </div>
