@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FormEvent, useState } from "react";
+import * as XLSX from "xlsx";
 
 type SubjectResult = {
   입학연도: number;
@@ -191,7 +192,104 @@ export default function Home() {
       setLoading(false);
     }
   }
+function handleExportExcel() {
+  if (!result) {
+    alert("먼저 성적을 조회해주세요.");
+    return;
+  }
 
+  const application = result.data.application;
+  const finalScore = result.data.finalScore;
+
+  if (!application || !finalScore) {
+    alert("내보낼 성적 데이터가 없습니다.");
+    return;
+  }
+
+  // SQL 조회 결과처럼 1명 = 1행
+  const exportData = [
+    {
+      입학연도: application.입학연도,
+      모집시기명: application.모집시기명,
+      수험번호: application.수험번호,
+      전형명: application.전형명,
+      모집단위명: application.모집단위명,
+
+      학생부반영비율: application.학생부반영비율,
+      학생부점수범위: application.학생부점수범위,
+      적용계산식: application.적용계산식,
+
+      우수학기1_학년: finalScore.우수학기1_학년,
+      우수학기1_학기: finalScore.우수학기1_학기,
+      우수학기1: `${finalScore.우수학기1_학년}학년 ${finalScore.우수학기1_학기}학기`,
+      우수학기1_등급: finalScore.우수학기1_등급,
+
+      우수학기2_학년: finalScore.우수학기2_학년,
+      우수학기2_학기: finalScore.우수학기2_학기,
+      우수학기2: `${finalScore.우수학기2_학년}학년 ${finalScore.우수학기2_학기}학기`,
+      우수학기2_등급: finalScore.우수학기2_등급,
+
+      우수2개학기_평균등급:
+        finalScore.우수2개학기_평균등급,
+
+      재계산_우수2개학기_평균등급:
+        finalScore.재계산_우수2개학기_평균등급,
+
+      학생부점수_1000점:
+        finalScore.학생부점수_1000점,
+
+      재계산_학생부점수_1000점:
+        finalScore.재계산_학생부점수_1000점,
+
+      우수학기평균검증:
+        finalScore.우수학기평균검증,
+
+      최종점수검증:
+        finalScore.최종점수검증,
+    },
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+  // SQL 조회 화면처럼 각 컬럼을 가로로 표시
+  worksheet["!cols"] = [
+    { wch: 12 }, // 입학연도
+    { wch: 12 }, // 모집시기명
+    { wch: 14 }, // 수험번호
+    { wch: 16 }, // 전형명
+    { wch: 22 }, // 모집단위명
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 24 },
+    { wch: 30 },
+    { wch: 20 },
+    { wch: 28 },
+    { wch: 20 },
+    { wch: 18 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "성적계산결과"
+  );
+
+  XLSX.writeFile(
+    workbook,
+    `숭의여대_성적계산결과_${result.examNo}.xlsx`
+  );
+}
   return (
     <>
       <header className="site-header">
@@ -555,6 +653,16 @@ export default function Home() {
             </div>
           </section>
         )}
+        <div className="excel-export-wrap">
+            <button
+              type="button"
+              className="excel-export-button"
+              onClick={handleExportExcel}
+            >
+              <span className="excel-export-icon">↓</span>
+              엑셀로 내보내기
+            </button>
+          </div>
         </>
       )}
       </main>

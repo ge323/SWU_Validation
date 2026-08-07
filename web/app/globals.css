@@ -638,3 +638,52 @@ th {
     grid-column: span 1;
   }
 }
+
+.excel-export-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 32px;
+  margin-bottom: 50px;
+}
+
+.excel-export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  min-width: 180px;
+  padding: 14px 24px;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #217346;
+  color: #ffffff;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.excel-export-button:hover {
+  background: #185c37;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(33, 115, 70, 0.25);
+}
+
+.excel-export-button:active {
+  transform: translateY(0);
+}
+
+.excel-export-icon {
+  font-size: 18px;
+  font-weight: 700;
+}
