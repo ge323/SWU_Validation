@@ -1,671 +1,1399 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { FormEvent, useState } from "react";
-import * as XLSX from "xlsx";
+import { useMemo, useState } from "react";
 
-type SubjectResult = {
-  입학연도: number;
-  모집시기: number;
-  수험번호: string;
-  학년: number;
-  학기: number;
-  교과명: string | null;
-  과목명: string;
-  이수단위: number;
-  석차등급: string | null;
-  Z점수: number | null;
-  적용등급: number | null;
-  계산된_과목별등급가중값: number | null;
-  // 과목별가중값검증: string;
-  등급산출방법: string | null;
-  반영여부: string | null;
-};
+import UniversitySelector from "../components/university/UniversitySelector";
+import type { UniversityCode } from "../components/university/UniversitySelector";
 
-type SemesterResult = {
-  입학연도: number;
-  모집시기: number;
-  수험번호: string;
-  학년: number;
-  학기: number;
-  반영과목수: number;
-  제외과목수: number;
-  과목합계_이수단위: number;
-  총이수단위: number;
-  과목합계_등급가중값: number;
-  등급가중합: number;
-  학기평균등급: number;
-  재계산_학기평균등급: number;
-  이수단위검증: string;
-  등급가중합검증: string;
-  학기평균검증: string;
-};
+import ExcelUploader from "../components/upload/ExcelUploader";
 
-type RankingResult = {
-  입학연도: number;
-  모집시기: number;
-  수험번호: string;
-  학년: number;
-  학기: number;
-  최종학기등급: number;
-  우수학기순위: number;
-  기대순위: number;
-  우수학기순위검증: string;
-  우수학기여부: string;
-};
+import {
+  parseExcelFiles,
+  type ExcelRow,
+} from "../lib/excel/parser";
 
-type FinalScoreResult = {
-  입학연도: number;
-  모집시기: number;
-  수험번호: string;
-  우수학기1_학년: number;
-  우수학기1_학기: number;
-  우수학기1_등급: number;
-  우수학기2_학년: number;
-  우수학기2_학기: number;
-  우수학기2_등급: number;
-  우수2개학기_평균등급: number;
-  재계산_우수2개학기_평균등급: number;
-  학생부점수_1000점: number;
-  재계산_학생부점수_1000점: number;
-  우수학기평균검증: string;
-  최종점수검증: string;
-};
-
-type VerifyResponse = {
-  message: string;
-  examNo: string;
-  data: {
-    application: ApplicationResult | null;
-    subjects: SubjectResult[];
-    semesters: SemesterResult[];
-    rankings: RankingResult[];
-    finalScore: FinalScoreResult | null;
-  };
-};
-
-type ApplicationResult = {
-  입학연도: number;
-  모집시기명: string;
-  수험번호: string;
-  전형명: string;
-  모집단위명: string;
-  학생부반영비율: number;
-  학생부점수범위: string;
-  적용계산식: string;
-};
-
-function formatDifference(
-  value1: number,
-  value2: number,
-  verificationResult: string
-) {
-  if (verificationResult === "일치") {
-    return "0.000000";
-  }
-
-  const difference = Math.abs(Number(value1) - Number(value2));
-
-  return difference.toFixed(6);
-}
-
-const universities = [
-  {
-    code: "swu",
-    shortName: "숭의여대",
-    fullName: "숭의여자대학교",
-    enabled: true,
-    href: "/",
-  },
-  {
-    code: "gcu",
-    shortName: "가천대",
-    fullName: "가천대학교",
-    enabled: false,
-  },
-  {
-    code: "snut",
-    shortName: "서울과기대",
-    fullName: "서울과학기술대학교",
-    enabled: true,
-    href: "/snut",
-  },
-  {
-    code: "ku",
-    shortName: "건국대",
-    fullName: "건국대학교",
-    enabled: false,
-  },
-  {
-    code: "khu",
-    shortName: "경희대",
-    fullName: "경희대학교",
-    enabled: false,
-  },
-];
+type StepStatus =
+  | "complete"
+  | "active"
+  | "waiting";
 
 export default function Home() {
-  const pathname = usePathname();
-  const [examNo, setExamNo] = useState("01510001");
-  const [result, setResult] = useState<VerifyResponse | null>(null);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  /* =========================================================
+     기본 상태
+     ========================================================= */
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const [
+    selectedUniversity,
+    setSelectedUniversity,
+  ] = useState<UniversityCode | null>(null);
 
-    const trimmedExamNo = examNo.trim();
+  const [selectedFiles, setSelectedFiles] =
+    useState<File[]>([]);
 
-    if (!trimmedExamNo) {
-      setMessage("수험번호를 입력해주세요.");
-      setResult(null);
+  const [isAnalyzed, setIsAnalyzed] =
+    useState(false);
+
+  const [isVerified, setIsVerified] =
+    useState(false);
+
+  const [isAnalyzing, setIsAnalyzing] =
+    useState(false);
+
+  /* =========================================================
+     Excel 분석 상태
+     ========================================================= */
+
+  const [excelRows, setExcelRows] =
+    useState<ExcelRow[]>([]);
+
+  const [totalApplicants, setTotalApplicants] =
+    useState(0);
+
+  const [totalRows, setTotalRows] =
+    useState(0);
+
+  const [errorRows, setErrorRows] =
+    useState(0);
+
+  const [columns, setColumns] =
+    useState<string[]>([]);
+
+  /* =========================================================
+     검색
+     ========================================================= */
+
+  const [
+    searchApplicantNo,
+    setSearchApplicantNo,
+  ] = useState("");
+
+  /* =========================================================
+     진행 단계
+     ========================================================= */
+
+  const steps = useMemo(
+    () => [
+      {
+        number: 1,
+        label: "대학 선택",
+        status: getStepStatus(
+          Boolean(selectedUniversity),
+          true
+        ),
+      },
+      {
+        number: 2,
+        label: "파일 업로드",
+        status: getStepStatus(
+          selectedFiles.length > 0,
+          Boolean(selectedUniversity)
+        ),
+      },
+      {
+        number: 3,
+        label: "데이터 확인",
+        status: getStepStatus(
+          isAnalyzed,
+          selectedFiles.length > 0
+        ),
+      },
+      {
+        number: 4,
+        label: "전체 검증",
+        status: getStepStatus(
+          isVerified,
+          isAnalyzed
+        ),
+      },
+    ],
+    [
+      selectedUniversity,
+      selectedFiles,
+      isAnalyzed,
+      isVerified,
+    ]
+  );
+
+  /* =========================================================
+     대학 선택
+     ========================================================= */
+
+  function handleUniversitySelect(
+    university: UniversityCode
+  ) {
+    if (selectedUniversity !== university) {
+      setSelectedFiles([]);
+
+      resetExcelAnalysis();
+
+      setIsVerified(false);
+    }
+
+    setSelectedUniversity(university);
+  }
+
+  /* =========================================================
+     Excel 파일 추가
+     ========================================================= */
+
+  function handleFilesSelect(
+    files: File[]
+  ) {
+    setSelectedFiles((prevFiles) => {
+      const mergedFiles = [...prevFiles];
+
+      files.forEach((newFile) => {
+        const isDuplicate =
+          mergedFiles.some(
+            (existingFile) =>
+              existingFile.name ===
+                newFile.name &&
+              existingFile.size ===
+                newFile.size &&
+              existingFile.lastModified ===
+                newFile.lastModified
+          );
+
+        if (!isDuplicate) {
+          mergedFiles.push(newFile);
+        }
+      });
+
+      return mergedFiles;
+    });
+
+    resetExcelAnalysis();
+    setIsVerified(false);
+  }
+
+  /* =========================================================
+     특정 파일 삭제
+     ========================================================= */
+
+  function handleFileRemove(
+    index: number
+  ) {
+    setSelectedFiles((prevFiles) =>
+      prevFiles.filter(
+        (_, fileIndex) =>
+          fileIndex !== index
+      )
+    );
+
+    resetExcelAnalysis();
+    setIsVerified(false);
+  }
+
+  /* =========================================================
+     모든 파일 삭제
+     ========================================================= */
+
+  function handleClearFiles() {
+    setSelectedFiles([]);
+
+    resetExcelAnalysis();
+
+    setIsVerified(false);
+  }
+
+  /* =========================================================
+     Excel 분석 초기화
+     ========================================================= */
+
+  function resetExcelAnalysis() {
+    setExcelRows([]);
+
+    setTotalApplicants(0);
+    setTotalRows(0);
+    setErrorRows(0);
+
+    setColumns([]);
+
+    setSearchApplicantNo("");
+
+    setIsAnalyzed(false);
+  }
+
+  /* =========================================================
+     Excel 파일 분석
+     ========================================================= */
+
+  async function handleAnalyze() {
+    if (selectedFiles.length === 0) {
       return;
     }
 
     try {
-      setLoading(true);
-      setMessage("");
-      setResult(null);
+      setIsAnalyzing(true);
 
-      const response = await fetch(
-        `/api/swu/verify?examNo=${encodeURIComponent(trimmedExamNo)}`,
-        {
-          cache: "no-store",
-        }
+      const result =
+        await parseExcelFiles(
+          selectedFiles
+        );
+
+      setExcelRows(result.rows);
+
+      setTotalApplicants(
+        result.totalApplicants
       );
 
-      const body = await response.json();
+      setTotalRows(
+        result.totalRows
+      );
 
-      if (!response.ok) {
-        throw new Error(body.message ?? "성적 검증에 실패했습니다.");
-      }
+      setErrorRows(
+        result.errorRows
+      );
 
-      setResult(body);
+      setColumns(
+        result.columns
+      );
+
+      setIsAnalyzed(true);
+      setIsVerified(false);
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "성적 검증 중 오류가 발생했습니다."
+      console.error(
+        "Excel 분석 오류:",
+        error
+      );
+
+      alert(
+        "Excel 파일 분석 중 오류가 발생했습니다."
       );
     } finally {
-      setLoading(false);
+      setIsAnalyzing(false);
     }
   }
-function handleExportExcel() {
-  if (!result) {
-    alert("먼저 성적을 조회해주세요.");
-    return;
+
+  /* =========================================================
+     전체 검증
+     ========================================================= */
+
+  function handleVerify() {
+    if (!isAnalyzed) {
+      return;
+    }
+
+    /*
+     * TODO
+     *
+     * 다음 단계에서:
+     *
+     * selectedUniversity
+     *      ↓
+     * 대학별 검증 API
+     *      ↓
+     * SQL Server
+     *      ↓
+     * 검증 결과
+     *
+     * 구조로 연결
+     */
+
+    setIsVerified(true);
   }
 
-  const application = result.data.application;
-  const finalScore = result.data.finalScore;
+  /* =========================================================
+     수험번호 검색 결과
+     ========================================================= */
 
-  if (!application || !finalScore) {
-    alert("내보낼 성적 데이터가 없습니다.");
-    return;
-  }
+  const filteredRows =
+    searchApplicantNo.trim() === ""
+      ? excelRows
+      : excelRows.filter((row) => {
+          const applicantNo =
+            getValue(
+              row,
+              "수험번호",
+              "수험자번호",
+              "applicantNo"
+            );
 
-  // SQL 조회 결과처럼 1명 = 1행
-  const exportData = [
-    {
-      입학연도: application.입학연도,
-      모집시기명: application.모집시기명,
-      수험번호: application.수험번호,
-      전형명: application.전형명,
-      모집단위명: application.모집단위명,
+          return String(
+            applicantNo ?? ""
+          ).includes(
+            searchApplicantNo.trim()
+          );
+        });
 
-      학생부반영비율: application.학생부반영비율,
-      학생부점수범위: application.학생부점수범위,
-      적용계산식: application.적용계산식,
+  /*
+   * 브라우저에 수십만 건을 한 번에 렌더링하면
+   * 매우 느려질 수 있으므로 화면에는 일부만 출력한다.
+   */
+  const visibleRows =
+    filteredRows.slice(0, 1000);
 
-      우수학기1_학년: finalScore.우수학기1_학년,
-      우수학기1_학기: finalScore.우수학기1_학기,
-      우수학기1: `${finalScore.우수학기1_학년}학년 ${finalScore.우수학기1_학기}학기`,
-      우수학기1_등급: finalScore.우수학기1_등급,
+  // sourceFile은 내부 추적용으로만 사용하고
+  // 원본 데이터 표에서는 숨긴다.
+  const visibleColumns =
+    columns.filter(
+      (column) =>
+        column !== "sourceFile"
+    );
+  /* =========================================================
+     화면
+     ========================================================= */
 
-      우수학기2_학년: finalScore.우수학기2_학년,
-      우수학기2_학기: finalScore.우수학기2_학기,
-      우수학기2: `${finalScore.우수학기2_학년}학년 ${finalScore.우수학기2_학기}학기`,
-      우수학기2_등급: finalScore.우수학기2_등급,
+  return (
+    <main className="verification-page">
 
-      우수2개학기_평균등급:
-        finalScore.우수2개학기_평균등급,
+      {/* =====================================================
+          상단
+      ====================================================== */}
 
-      재계산_우수2개학기_평균등급:
-        finalScore.재계산_우수2개학기_평균등급,
+      <section className="hero-section">
 
-      학생부점수_1000점:
-        finalScore.학생부점수_1000점,
+        <div className="hero-content">
 
-      재계산_학생부점수_1000점:
-        finalScore.재계산_학생부점수_1000점,
+          <span className="hero-label">
+            Admission Score Verification
+          </span>
 
-      우수학기평균검증:
-        finalScore.우수학기평균검증,
+          <h1>
+            대학 입학성적 검증 시스템
+          </h1>
 
-      최종점수검증:
-        finalScore.최종점수검증,
-    },
-  ];
+          <p>
+            대학에서 제공한 학생부 Excel/CSV
+            원본 데이터를 업로드하고,
+            대학별 성적 산출 기준에 따라
+            반영 과정과 최종 결과를
+            단계별로 검증합니다.
+          </p>
 
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
+        </div>
 
-  // SQL 조회 화면처럼 각 컬럼을 가로로 표시
-  worksheet["!cols"] = [
-    { wch: 12 }, // 입학연도
-    { wch: 12 }, // 모집시기명
-    { wch: 14 }, // 수험번호
-    { wch: 16 }, // 전형명
-    { wch: 22 }, // 모집단위명
-    { wch: 18 },
-    { wch: 20 },
-    { wch: 28 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 24 },
-    { wch: 30 },
-    { wch: 20 },
-    { wch: 28 },
-    { wch: 20 },
-    { wch: 18 },
-  ];
+        <div className="hero-summary">
 
-  const workbook = XLSX.utils.book_new();
+          <div>
+            <span>선택 대학</span>
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    worksheet,
-    "성적계산결과"
-  );
+            <strong>
+              {selectedUniversity
+                ? getUniversityName(
+                    selectedUniversity
+                  )
+                : "선택 전"}
+            </strong>
+          </div>
 
-  XLSX.writeFile(
-    workbook,
-    `숭의여대_성적계산결과_${result.examNo}.xlsx`
+          <div>
+            <span>업로드 파일</span>
+
+            <strong>
+              {selectedFiles.length > 0
+                ? `${selectedFiles.length}개 파일`
+                : "없음"}
+            </strong>
+          </div>
+
+          <div>
+            <span>현재 상태</span>
+
+            <strong>
+              {isVerified
+                ? "검증 완료"
+                : isAnalyzing
+                ? "데이터 분석 중"
+                : isAnalyzed
+                ? "데이터 분석 완료"
+                : selectedFiles.length > 0
+                ? "파일 업로드 완료"
+                : selectedUniversity
+                ? "파일 업로드 대기"
+                : "대학 선택 대기"}
+            </strong>
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* =====================================================
+          진행 단계
+      ====================================================== */}
+
+      <section className="stepper-section">
+
+        <div className="stepper">
+
+          {steps.map(
+            (step, index) => (
+
+              <div
+                key={step.number}
+                className="stepper-group"
+              >
+
+                <div
+                  className={`step-item ${step.status}`}
+                >
+
+                  <span className="step-circle">
+
+                    {step.status === "complete"
+                      ? "✓"
+                      : step.number}
+
+                  </span>
+
+                  <span className="step-label">
+                    {step.label}
+                  </span>
+
+                </div>
+
+                {index <
+                  steps.length - 1 && (
+
+                  <div
+                    className={`step-line ${
+                      step.status === "complete"
+                        ? "complete"
+                        : ""
+                    }`}
+                  />
+
+                )}
+
+              </div>
+
+            )
+          )}
+
+        </div>
+
+      </section>
+
+      {/* =====================================================
+          콘텐츠
+      ====================================================== */}
+
+      <div className="content-stack">
+
+        {/* ===================================================
+            01 대학교 선택
+        ==================================================== */}
+
+        <UniversitySelector
+          selectedUniversity={
+            selectedUniversity
+          }
+          onSelect={
+            handleUniversitySelect
+          }
+        />
+
+        {/* ===================================================
+            02 데이터 파일 업로드
+        ==================================================== */}
+
+        <ExcelUploader
+          files={selectedFiles}
+          disabled={
+            !selectedUniversity
+          }
+          onFilesSelect={
+            handleFilesSelect
+          }
+          onFileRemove={
+            handleFileRemove
+          }
+          onClearFiles={
+            handleClearFiles
+          }
+        />
+
+        {/* ===================================================
+            03 전체 학생부 데이터
+        ==================================================== */}
+
+        {selectedFiles.length > 0 && (
+
+          <section className="content-card">
+
+            <div className="card-heading">
+
+              <div>
+
+                <span className="section-index">
+                  03
+                </span>
+
+                <div>
+
+                  <h2>
+                    전체 학생부 데이터
+                  </h2>
+
+                  <p>
+                    업로드한 모든 Excel/CSV
+                    파일을 하나의 데이터셋으로
+                    병합하여 확인합니다.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {!isAnalyzed && (
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={
+                    handleAnalyze
+                  }
+                  disabled={
+                    isAnalyzing
+                  }
+                >
+                  {isAnalyzing
+                    ? "분석 중..."
+                    : "데이터 분석하기"}
+                </button>
+
+              )}
+
+            </div>
+
+            {!isAnalyzed ? (
+
+              <div className="empty-state">
+
+                <strong>
+                  업로드된 데이터 파일이
+                  준비되었습니다.
+                </strong>
+
+                <p>
+                  데이터 분석 버튼을 누르면
+                  모든 Excel/CSV 파일을 읽어
+                  하나의 학생부 데이터로
+                  병합합니다.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <>
+
+                {/* -----------------------------------------
+                    데이터 요약
+                ------------------------------------------ */}
+
+                <div className="summary-grid">
+
+                  <SummaryCard
+                    label="업로드 파일"
+                    value={
+                      selectedFiles.length.toLocaleString()
+                    }
+                    unit="개"
+                  />
+
+                  <SummaryCard
+                    label="전체 지원자"
+                    value={
+                      totalApplicants.toLocaleString()
+                    }
+                    unit="명"
+                  />
+
+                  <SummaryCard
+                    label="전체 데이터"
+                    value={
+                      totalRows.toLocaleString()
+                    }
+                    unit="건"
+                  />
+
+                  <SummaryCard
+                    label="컬럼 수"
+                    value={
+                      columns.length.toLocaleString()
+                    }
+                    unit="개"
+                  />
+
+                  <SummaryCard
+                    label="확인 필요"
+                    value={
+                      errorRows.toLocaleString()
+                    }
+                    unit="건"
+                    emphasis
+                  />
+
+                </div>
+
+                {/* -----------------------------------------
+                    데이터 안내
+                ------------------------------------------ */}
+
+                <div className="notice-box">
+
+                  <div>
+
+                    <strong>
+                      데이터 파일 병합 완료
+                    </strong>
+
+                    <p>
+                      {selectedFiles.length}
+                      개 파일에서 총{" "}
+                      {totalRows.toLocaleString()}
+                      건의 학생부 데이터를
+                      읽었습니다.
+                    </p>
+
+                  </div>
+
+                  <span className="data-status-badge">
+                    분석 완료
+                  </span>
+
+                </div>
+
+                {/* -----------------------------------------
+                    전체 원본 데이터
+                ------------------------------------------ */}
+
+                <div className="data-preview">
+
+                  <div className="data-preview-header">
+
+                    <div>
+
+                      <strong>
+                        학생부 원본 데이터
+                      </strong>
+
+                      <p>
+                        업로드된 모든 파일의
+                        병합 결과입니다.
+                      </p>
+
+                    </div>
+
+                    <div className="data-preview-filters">
+
+                      <input
+                        type="text"
+                        value={
+                          searchApplicantNo
+                        }
+                        onChange={(event) =>
+                          setSearchApplicantNo(
+                            event.target.value
+                          )
+                        }
+                        placeholder="수험번호 검색"
+                      />
+
+                      {searchApplicantNo && (
+
+                        <button
+                          type="button"
+                          className="secondary-outline-button"
+                          onClick={() =>
+                            setSearchApplicantNo("")
+                          }
+                        >
+                          초기화
+                        </button>
+
+                      )}
+
+                    </div>
+
+                  </div>
+
+                  <div className="data-table-meta">
+
+                    <span>
+                      검색 결과{" "}
+                      <strong>
+                        {filteredRows.length.toLocaleString()}
+                      </strong>
+                      건
+                    </span>
+
+                    {filteredRows.length >
+                      1000 && (
+
+                      <span>
+                        화면에는 최대
+                        1,000건만 표시됩니다.
+                      </span>
+
+                    )}
+
+                  </div>
+
+                  <div className="data-table-wrapper">
+
+                    <table className="student-data-table">
+                      <thead>
+                        <tr>
+                          <th className="row-number-column">
+                            번호
+                          </th>
+
+                          {visibleColumns.map(
+                            (column) => (
+                              <th key={column}>
+                                {column}
+                              </th>
+                            )
+                          )}
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {visibleRows.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={
+                                visibleColumns.length + 1
+                              }
+                              className="table-empty-cell"
+                            >
+                              조회되는 데이터가 없습니다.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleRows.map(
+                            (row, rowIndex) => (
+                              <tr
+                                key={`${row.sourceFile}-${rowIndex}`}
+                              >
+                                <td className="row-number-column">
+                                  {rowIndex + 1}
+                                </td>
+
+                                {visibleColumns.map(
+                                  (column) => {
+                                    const value =
+                                      row[column];
+
+                                    const isApplicantColumn =
+                                      column === "수험번호" ||
+                                      column === "수험자번호" ||
+                                      column === "지원자번호" ||
+                                      column === "접수번호";
+
+                                    return (
+                                      <td
+                                        key={`${rowIndex}-${column}`}
+                                        className={
+                                          isApplicantColumn
+                                            ? "applicant-number-cell"
+                                            : ""
+                                        }
+                                        title={
+                                          value === undefined ||
+                                          value === null
+                                            ? ""
+                                            : String(value)
+                                        }
+                                      >
+                                        {displayValue(value)}
+                                      </td>
+                                    );
+                                  }
+                                )}
+                              </tr>
+                            )
+                          )
+                        )}
+                      </tbody>
+                    </table>
+
+                  </div>
+
+                  <div className="table-footer">
+
+                    전체{" "}
+                    {totalRows.toLocaleString()}
+                    건 중{" "}
+                    {Math.min(
+                      filteredRows.length,
+                      1000
+                    ).toLocaleString()}
+                    건 표시
+
+                  </div>
+
+                </div>
+
+              </>
+
+            )}
+
+          </section>
+
+        )}
+
+        {/* ===================================================
+            04 전체 성적 검증
+        ==================================================== */}
+
+        {isAnalyzed && (
+
+          <section className="content-card">
+
+            <div className="card-heading">
+
+              <div>
+
+                <span className="section-index">
+                  04
+                </span>
+
+                <div>
+
+                  <h2>
+                    전체 성적 검증
+                  </h2>
+
+                  <p>
+                    선택 대학의 성적 산출
+                    규칙과 SQL 검증 로직을
+                    전체 지원자에게
+                    적용합니다.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {!isVerified && (
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={
+                    handleVerify
+                  }
+                >
+                  전체 검증 시작
+                </button>
+
+              )}
+
+            </div>
+
+            {!isVerified ? (
+
+              <div className="empty-state">
+
+                <strong>
+                  전체 데이터를
+                  검증할 준비가
+                  완료되었습니다.
+                </strong>
+
+                <p>
+                  다음 단계에서 대학별
+                  SQL 검증 API를 연결합니다.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <>
+
+                <div className="verification-result-grid">
+
+                  <ResultCard
+                    label="전체 지원자"
+                    value={
+                      totalApplicants.toLocaleString()
+                    }
+                  />
+
+                  <ResultCard
+                    label="정상"
+                    value="-"
+                    status="success"
+                  />
+
+                  <ResultCard
+                    label="재확인 필요"
+                    value="-"
+                    status="warning"
+                  />
+
+                  <ResultCard
+                    label="오류"
+                    value="-"
+                    status="error"
+                  />
+
+                </div>
+
+                <div className="notice-box">
+
+                  <div>
+
+                    <strong>
+                      SQL 검증 API 연결 대기
+                    </strong>
+
+                    <p>
+                      현재 Excel 원본 데이터
+                      조회까지 완료되었습니다.
+                      다음 단계에서 기존
+                      서울과기대 / 숭의여대
+                      SQL 검증 로직을
+                      연결합니다.
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </>
+
+            )}
+
+          </section>
+
+        )}
+
+        {/* ===================================================
+            05 수험생 상세 검증
+        ==================================================== */}
+
+        {isVerified && (
+
+          <section className="content-card">
+
+            <div className="card-heading">
+
+              <div>
+
+                <span className="section-index">
+                  05
+                </span>
+
+                <div>
+
+                  <h2>
+                    수험생 상세 검증
+                  </h2>
+
+                  <p>
+                    특정 수험번호를
+                    조회하여 원본 학생부와
+                    성적 산출 결과를
+                    확인합니다.
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            <div className="student-search-area">
+
+              <div className="search-field">
+
+                <label htmlFor="detailApplicantNo">
+                  수험번호
+                </label>
+
+                <input
+                  id="detailApplicantNo"
+                  type="text"
+                  placeholder="예: 26087000073"
+                />
+
+              </div>
+
+              <button
+                type="button"
+                className="primary-button"
+              >
+                조회
+              </button>
+
+            </div>
+
+            {/* -----------------------------------------------
+                06 성적 산출 근거
+            ------------------------------------------------ */}
+
+            <div className="calculation-evidence">
+
+              <div className="evidence-title">
+
+                <span className="section-index">
+                  06
+                </span>
+
+                <div>
+
+                  <h3>
+                    성적 산출 근거
+                  </h3>
+
+                  <p>
+                    어떤 과목이 반영되었고,
+                    어떤 계산을 통해
+                    최종 점수가 산출되었는지
+                    보여주는 영역입니다.
+                  </p>
+
+                </div>
+
+              </div>
+
+              <div className="verification-flow">
+
+                <FlowItem
+                  number="1"
+                  title="원본 학생부"
+                  description="업로드된 학생부 원본 확인"
+                />
+
+                <FlowArrow />
+
+                <FlowItem
+                  number="2"
+                  title="반영 기준"
+                  description="대학·전형별 성적 반영 규칙 적용"
+                />
+
+                <FlowArrow />
+
+                <FlowItem
+                  number="3"
+                  title="과목 판정"
+                  description="반영·미반영 과목 및 사유 확인"
+                />
+
+                <FlowArrow />
+
+                <FlowItem
+                  number="4"
+                  title="최종 계산"
+                  description="환산점수·가중점수·최종값 비교"
+                />
+
+              </div>
+
+              <div className="empty-state evidence-empty">
+
+                <strong>
+                  수험번호를 조회해주세요.
+                </strong>
+
+                <p>
+                  조회 후 과목별 반영 여부,
+                  반영 사유, 이수단위,
+                  환산점수, 가중점수와
+                  최종 계산식이 표시됩니다.
+                </p>
+
+              </div>
+
+            </div>
+
+          </section>
+
+        )}
+
+        {/* ===================================================
+            07 Excel 결과 다운로드
+        ==================================================== */}
+
+        {isVerified && (
+
+          <section className="content-card">
+
+            <div className="card-heading">
+
+              <div>
+
+                <span className="section-index">
+                  07
+                </span>
+
+                <div>
+
+                  <h2>
+                    검증 결과 다운로드
+                  </h2>
+
+                  <p>
+                    검증 결과를 세 개의
+                    Sheet로 정리하여
+                    Excel로 다운로드합니다.
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            <div className="export-sheet-grid">
+
+              <ExportSheet
+                number="01"
+                title="검증요약"
+                description="대학, 업로드 파일, 지원자 수, 검증 건수, 일치율"
+              />
+
+              <ExportSheet
+                number="02"
+                title="전체검증결과"
+                description="수험번호별 원본값, 재계산값, 차이 및 검증상태"
+              />
+
+              <ExportSheet
+                number="03"
+                title="성적산출근거"
+                description="과목별 등급, 이수단위, 반영여부, 가중점수 및 판정사유"
+              />
+
+            </div>
+
+            <div className="export-action">
+
+              <button
+                type="button"
+                className="primary-button"
+              >
+                Excel 검증 보고서 다운로드
+              </button>
+
+            </div>
+
+          </section>
+
+        )}
+
+      </div>
+
+    </main>
   );
 }
+
+/* =========================================================
+   공통 함수
+   ========================================================= */
+
+function getStepStatus(
+  complete: boolean,
+  enabled: boolean
+): StepStatus {
+  if (complete) {
+    return "complete";
+  }
+
+  if (enabled) {
+    return "active";
+  }
+
+  return "waiting";
+}
+
+function getUniversityName(
+  code: UniversityCode
+) {
+  const universityNames: Record<
+    UniversityCode,
+    string
+  > = {
+    swu: "숭의여자대학교",
+    snut: "서울과학기술대학교",
+    gachon: "가천대학교",
+    konkuk: "건국대학교",
+    khu: "경희대학교",
+  };
+
+  return universityNames[code];
+}
+
+/*
+ * 대학에서 내려주는 Excel마다
+ * 컬럼명이 조금 다를 수 있으므로
+ * 여러 후보 중 실제 값을 찾아준다.
+ */
+function getValue(
+  row: ExcelRow,
+  ...keys: string[]
+) {
+  for (const key of keys) {
+    const value = row[key];
+
+    if (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== ""
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function displayValue(
+  value: unknown
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return "-";
+  }
+
+  return String(value);
+}
+
+/* =========================================================
+   Summary Card
+   ========================================================= */
+
+function SummaryCard({
+  label,
+  value,
+  unit,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  emphasis?: boolean;
+}) {
   return (
-    <>
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="brand">
+    <div
+      className={`summary-card ${
+        emphasis
+          ? "emphasis"
+          : ""
+      }`}
+    >
+      <span>{label}</span>
 
-            <div className="brand-text">
-              <strong>대학 입학성적 검증 시스템</strong>
-            </div>
-          </div>
+      <strong>
+        {value}
+        <small>{unit}</small>
+      </strong>
+    </div>
+  );
+}
 
-          <nav className="university-nav" aria-label="대학교 선택">
-            {universities.map((university) =>
-              university.enabled ? (
-                <Link
-                  key={university.code}
-                  href={university.href ?? "/"}
-                  className={`university-nav-item ${
-                    pathname === (university.href || "/") ? "active" : ""
-                  }`}
-                  title={university.fullName}
-                >
-                  {university.shortName}
-                </Link>
-              ) : (
-                <button
-                  key={university.code}
-                  type="button"
-                  className="university-nav-item"
-                  disabled
-                  title={`${university.fullName} 준비 중`}
-                >
-                  {university.shortName}
-                  <span className="coming-soon">준비 중</span>
-                </button>
-              )
-            )}
-          </nav>
-        </div>
-      </header>
+/* =========================================================
+   Result Card
+   ========================================================= */
 
-      <main className="page">
-        <section className="search-card">
-          <div className="search-card-header">
-            <div>
-              <span className="university-name">
-                숭의여자대학교
-              </span>
+function ResultCard({
+  label,
+  value,
+  status,
+}: {
+  label: string;
+  value: string;
+  status?:
+    | "success"
+    | "warning"
+    | "error";
+}) {
+  return (
+    <div
+      className={`result-card ${
+        status
+          ? `result-${status}`
+          : ""
+      }`}
+    >
+      <span>{label}</span>
 
-              <h1>학생부 성적 검증</h1>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
-              <p>
-                수험번호를 입력하면 성적 산출 과정과 최종 점수를 확인할 수 있습니다.
-              </p>
-            </div>
-          </div>
+/* =========================================================
+   Verification Flow
+   ========================================================= */
 
-          <form onSubmit={handleSubmit} className="search-form">
-            <div className="input-group">
-              <label htmlFor="examNo">수험번호</label>
+function FlowItem({
+  number,
+  title,
+  description,
+}: {
+  number: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flow-item">
 
-              <input
-                id="examNo"
-                type="text"
-                value={examNo}
-                onChange={(event) => setExamNo(event.target.value)}
-                placeholder="예: 01510001"
-                autoComplete="off"
-              />
-            </div>
+      <span className="flow-number">
+        {number}
+      </span>
 
-            <button
-              type="submit"
-              className="verify-button"
-              disabled={loading}
-            >
-              <span className="button-icon">
-                {loading ? "⋯" : "✓"}
-              </span>
+      <strong>
+        {title}
+      </strong>
 
-              <span>{loading ? "검증 중..." : "성적 검증하기"}</span>
-            </button>
-          </form>
+      <p>
+        {description}
+      </p>
 
-          {message && (
-            <div className="search-message">
-              <span>!</span>
-              <p>{message}</p>
-            </div>
-          )}
-        </section>
+    </div>
+  );
+}
 
-      {result && (
-        <>
-        {result.data.application && (
-            <section className="result-section">
-              <h2>지원정보</h2>
+function FlowArrow() {
+  return (
+    <span
+      className="flow-arrow"
+      aria-hidden="true"
+    >
+      →
+    </span>
+  );
+}
 
-              <div className="summary-grid">
-                <div>
-                  <span>입학연도</span>
-                  <strong>{result.data.application.입학연도}</strong>
-                </div>
+/* =========================================================
+   Export Sheet
+   ========================================================= */
 
-                <div>
-                  <span>모집시기</span>
-                  <strong>{result.data.application.모집시기명}</strong>
-                </div>
+function ExportSheet({
+  number,
+  title,
+  description,
+}: {
+  number: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="export-sheet-card">
 
-                <div>
-                  <span>수험번호</span>
-                  <strong>{result.data.application.수험번호}</strong>
-                </div>
+      <span>
+        Sheet {number}
+      </span>
 
-                <div>
-                  <span>전형</span>
-                  <strong>{result.data.application.전형명}</strong>
-                </div>
+      <strong>
+        {title}
+      </strong>
 
-                <div>
-                  <span>지원학과</span>
-                  <strong>{result.data.application.모집단위명}</strong>
-                </div>
+      <p>
+        {description}
+      </p>
 
-                <div className="summary-item-emphasis">
-                  <span>학생부 반영비율</span>
-                  <strong>{result.data.application.학생부반영비율}%</strong>
-                </div>
-
-                <div>
-                  <span>학생부 점수범위</span>
-                  <strong>{result.data.application.학생부점수범위}</strong>
-                </div>
-
-                <div className="summary-item-formula">
-                  <span>적용 계산식</span>
-                  <strong>{result.data.application.적용계산식}</strong>
-                </div>
-              </div>
-            </section>
-          )}
-          <section className="result-section">
-            <h2>과목별 성적 계산</h2>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>학년</th>
-                    <th>학기</th>
-                    <th>교과명</th>
-                    <th>과목명</th>
-                    <th>이수단위</th>
-                    <th>석차등급</th>
-                    <th>Z점수</th>
-                    <th>적용등급</th>
-                    <th>등급가중값</th>
-                    {/* <th>검증</th> */}
-                    <th>반영 여부</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {result.data.subjects.map((subject, index) => (
-                    <tr
-                      key={`${subject.학년}-${subject.학기}-${subject.과목명}-${index}`}
-                    >
-                      <td>{subject.학년}</td>
-                      <td>{subject.학기}</td>
-                      <td>{subject.교과명 ?? "-"}</td>
-                      <td>{subject.과목명}</td>
-                      <td>{subject.이수단위}</td>
-                      <td>{subject.석차등급 ?? "-"}</td>
-                      <td>{subject.Z점수 ?? "-"}</td>
-                      <td>{subject.적용등급 ?? "-"}</td>
-                      <td>{subject.계산된_과목별등급가중값 ?? "-"}</td>
-                      {/* <td>{subject.과목별가중값검증}</td> */}
-                      <td>{subject.반영여부 ?? "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="result-section">
-            <h2>학기별 평균등급 검증</h2>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>학년</th>
-                    <th>학기</th>
-                    <th>반영과목수</th>
-                    <th>제외과목수</th>
-                    <th>총이수단위</th>
-                    <th>등급가중합</th>
-                    <th>학기평균등급</th>
-                    <th>재계산 평균등급</th>
-                    <th>이수단위 검증</th>
-                    <th>등급가중합 검증</th>
-                    <th>학기평균 검증</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {result.data.semesters.map((semester) => (
-                    <tr key={`${semester.학년}-${semester.학기}`}>
-                      <td>{semester.학년}</td>
-                      <td>{semester.학기}</td>
-                      <td>{semester.반영과목수}</td>
-                      <td>{semester.제외과목수}</td>
-                      <td>{semester.총이수단위}</td>
-                      <td>{semester.등급가중합}</td>
-                      <td>{semester.학기평균등급}</td>
-                      <td>{semester.재계산_학기평균등급}</td>
-                      <td>{semester.이수단위검증}</td>
-                      <td>{semester.등급가중합검증}</td>
-                      <td>{semester.학기평균검증}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="result-section">
-            <h2>우수학기 선정 검증</h2>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>학년</th>
-                    <th>학기</th>
-                    <th>최종학기등급</th>
-                    <th>우수학기순위</th>
-                    <th>기대순위</th>
-                    <th>우수학기순위 검증</th>
-                    <th>반영 여부</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {result.data.rankings.map((ranking) => (
-                    <tr key={`${ranking.학년}-${ranking.학기}`}>
-                      <td>{ranking.학년}</td>
-                      <td>{ranking.학기}</td>
-                      <td>{ranking.최종학기등급}</td>
-                      <td>{ranking.우수학기순위}</td>
-                      <td>{ranking.기대순위}</td>
-                      <td>{ranking.우수학기순위검증}</td>
-                      <td>{ranking.우수학기여부}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {result.data.finalScore && (
-          <section className="result-section">
-            <div className="section-header">
-              <div>
-                <h2>최종 학생부점수</h2>
-                <p>우수학기 선정 결과와 최종 환산점수를 확인합니다.</p>
-              </div>
-
-              <span
-                className={
-                  result.data.finalScore.최종점수검증 === "일치"
-                    ? "status-badge status-success"
-                    : "status-badge status-error"
-                }
-              >
-                {result.data.finalScore.최종점수검증 === "일치"
-                  ? "검증 완료"
-                  : "재확인 필요"}
-              </span>
-            </div>
-
-            <div className="final-score-grid">
-              <div className="score-card">
-                <span className="score-label">우수학기 1</span>
-
-                <strong className="score-main">
-                  {result.data.finalScore.우수학기1_학년}학년{" "}
-                  {result.data.finalScore.우수학기1_학기}학기
-                </strong>
-
-                <span className="score-detail">
-                  석차등급 {result.data.finalScore.우수학기1_등급}
-                </span>
-              </div>
-
-              <div className="score-card">
-                <span className="score-label">우수학기 2</span>
-
-                <strong className="score-main">
-                  {result.data.finalScore.우수학기2_학년}학년{" "}
-                  {result.data.finalScore.우수학기2_학기}학기
-                </strong>
-
-                <span className="score-detail">
-                  석차등급 {result.data.finalScore.우수학기2_등급}
-                </span>
-              </div>
-
-              <div className="score-card score-card-highlight">
-                <span className="score-label">우수 2개 학기 평균등급</span>
-
-                <strong className="score-main">
-                  {result.data.finalScore.우수2개학기_평균등급}
-                </strong>
-
-                <div className="comparison-row">
-                  <span>재계산값</span>
-                  <strong>
-                    {result.data.finalScore.재계산_우수2개학기_평균등급}
-                  </strong>
-                </div>
-
-                <div className="comparison-row">
-                  <span>차이</span>
-                  <strong>
-                    {formatDifference(
-                      result.data.finalScore.우수2개학기_평균등급,
-                      result.data.finalScore.재계산_우수2개학기_평균등급,
-                      result.data.finalScore.우수학기평균검증
-                    )}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="score-card score-card-primary">
-                <span className="score-label">최종 학생부점수</span>
-
-                <strong className="score-main score-main-large">
-                  {result.data.finalScore.학생부점수_1000점}
-                </strong>
-
-                <div className="comparison-row">
-                  <span>재계산값</span>
-                  <strong>
-                    {result.data.finalScore.재계산_학생부점수_1000점}
-                  </strong>
-                </div>
-
-                <div className="comparison-row">
-                  <span>차이</span>
-                  <strong>
-                    {formatDifference(
-                      result.data.finalScore.학생부점수_1000점,
-                      result.data.finalScore.재계산_학생부점수_1000점,
-                      result.data.finalScore.최종점수검증
-                    )}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-        <div className="excel-export-wrap">
-            <button
-              type="button"
-              className="excel-export-button"
-              onClick={handleExportExcel}
-            >
-              <span className="excel-export-icon">↓</span>
-              엑셀로 내보내기
-            </button>
-          </div>
-        </>
-      )}
-      </main>
-    </>
+    </div>
   );
 }
