@@ -3059,3 +3059,300 @@ button {
     text-align: center;
   }
 }
+
+
+/* =========================================================
+   확인 필요 항목 - 사유 자동 분석
+   ========================================================= */
+
+.issue-analysis-summary {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 12px;
+
+  margin-bottom: 12px;
+
+  padding: 13px 15px;
+
+  background: #f8fafc;
+
+  border: 1px solid #dbe2ea;
+  border-left: 4px solid #64748b;
+  border-radius: 8px;
+}
+
+
+/* i 아이콘 */
+
+.issue-analysis-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+
+  width: 22px;
+  height: 22px;
+
+  margin-top: 1px;
+
+  color: #475569;
+  background: #e2e8f0;
+
+  border-radius: 50%;
+
+  font-size: 10px;
+  font-weight: 900;
+}
+
+
+/* 내용 */
+
+.issue-analysis-content {
+  min-width: 0;
+}
+
+.issue-analysis-content > strong {
+  display: block;
+
+  color: #1e293b;
+
+  font-size: 11px;
+  font-weight: 800;
+
+  line-height: 1.6;
+}
+
+.issue-analysis-content > p {
+  margin: 4px 0 0;
+
+  color: #64748b;
+
+  font-size: 10px;
+
+  line-height: 1.6;
+}
+
+.issue-analysis-content > p b {
+  color: #334155;
+
+  font-weight: 800;
+}
+
+
+/* 여러 사유가 있을 경우 */
+
+.issue-reason-tags {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 6px;
+
+  margin-top: 9px;
+}
+
+.issue-reason-tags > span {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 5px;
+
+  padding: 5px 8px;
+
+  color: #475569;
+  background: #ffffff;
+
+  border: 1px solid #dbe2ea;
+  border-radius: 6px;
+
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.issue-reason-tags > span strong {
+  color: #1e293b;
+
+  font-weight: 800;
+}
+
+
+/* 모바일 */
+
+@media (max-width: 700px) {
+  .issue-analysis-summary {
+    padding: 12px;
+  }
+
+  .issue-reason-tags {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .issue-reason-tags > span {
+    width: fit-content;
+  }
+}
+
+/* =========================================================
+   확인 필요 항목 필터 탭
+   ========================================================= */
+
+.issue-filter-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.issue-filter-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  min-height: 30px;
+  padding: 5px 10px;
+
+  color: #475569;
+  background: #ffffff;
+
+  border: 1px solid #dbe2ea;
+  border-radius: 999px;
+
+  cursor: pointer;
+
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.issue-filter-tab > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 20px;
+  min-height: 18px;
+
+  padding: 0 5px;
+
+  color: #64748b;
+  background: #f1f5f9;
+
+  border-radius: 999px;
+
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.issue-filter-tab:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.issue-filter-tab.active {
+  color: #ffffff;
+  background: #334155;
+  border-color: #334155;
+
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.issue-filter-tab.active > span {
+  color: #334155;
+  background: #ffffff;
+}
+
+/* 재확인 */
+.issue-filter-tab.warning {
+  color: #b54708;
+  border-color: #fedf89;
+}
+
+.issue-filter-tab.warning > span {
+  color: #b54708;
+  background: #fffaeb;
+}
+
+.issue-filter-tab.warning:hover {
+  background: #fffaeb;
+}
+
+.issue-filter-tab.warning.active {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.issue-filter-tab.warning.active > span {
+  color: #92400e;
+  background: #ffffff;
+}
+
+/* 오류 */
+.issue-filter-tab.error {
+  color: #b42318;
+  border-color: #fecdca;
+}
+
+.issue-filter-tab.error > span {
+  color: #b42318;
+  background: #fef3f2;
+}
+
+.issue-filter-tab.error:hover {
+  background: #fef3f2;
+}
+
+.issue-filter-tab.error.active {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+.issue-filter-tab.error.active > span {
+  color: #991b1b;
+  background: #ffffff;
+}
+
+/* 빈 결과 */
+.issue-empty-cell {
+  height: 110px !important;
+
+  color: #98a2b3 !important;
+  background: #ffffff !important;
+
+  text-align: center !important;
+
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+/* 현재 탭의 사유 요약이 자연스럽게 붙도록 */
+.issue-analysis-summary {
+  margin-bottom: 12px;
+}
+
+/* 모바일 */
+@media (max-width: 700px) {
+  .verification-issue-header {
+    align-items: flex-start;
+  }
+
+  .issue-filter-tabs {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .issue-filter-tab {
+    flex: 0 0 auto;
+  }
+}

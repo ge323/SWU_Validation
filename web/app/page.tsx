@@ -121,6 +121,13 @@ export default function Home() {
     useState(false);
 
   const [
+    issueFilter,
+    setIssueFilter,
+  ] = useState<
+    "all" | "review" | "error"
+  >("all");
+
+  const [
     detailApplicantNo,
     setDetailApplicantNo,
   ] = useState("");
@@ -295,6 +302,7 @@ export default function Home() {
     setSearchApplicantNo("");
 
     setVerificationRows([]);
+    setIssueFilter("all");
 
     setVerificationSummary({
       total: 0,
@@ -585,6 +593,7 @@ export default function Home() {
 
       setVerificationRows(results);
       setVerificationSummary(summary);
+      setIssueFilter("all");
       setSelectedVerification(null);
       setDetailApplicantNo("");
       setDetailSearchMessage("");
@@ -833,6 +842,136 @@ export default function Home() {
       (column) =>
         column !== "sourceFile"
     );
+
+  /* =========================================================
+     확인 필요 항목 필터
+     ========================================================= */
+
+  const filteredIssueRows =
+    useMemo(() => {
+      return verificationRows.filter(
+        (row) => {
+          if (row.status === "정상") {
+            return false;
+          }
+
+          if (issueFilter === "review") {
+            return row.status === "재확인 필요";
+          }
+
+          if (issueFilter === "error") {
+            return row.status === "오류";
+          }
+
+          return true;
+        }
+      );
+    }, [verificationRows, issueFilter]);
+
+  /* =========================================================
+     확인 필요 항목 사유 요약
+     선택한 탭 기준으로 다시 집계
+     ========================================================= */
+
+  const issueReasonSummary = useMemo(() => {
+    const issueRows =
+      filteredIssueRows;
+
+    const reasonCount =
+      new Map<string, number>();
+
+    for (const row of issueRows) {
+      const reason =
+        normalizeIssueReason(
+          row.reason
+        );
+
+      reasonCount.set(
+        reason,
+        (reasonCount.get(reason) ?? 0) + 1
+      );
+    }
+
+    const reasons =
+      Array.from(
+        reasonCount.entries()
+      )
+        .map(
+          ([reason, count]) => ({
+            reason,
+            count,
+          })
+        )
+        .sort(
+          (a, b) =>
+            b.count - a.count
+        );
+
+    const topReason =
+      reasons[0] ?? null;
+
+    const total =
+      issueRows.length;
+
+    const distinctCount =
+      reasons.length;
+
+    const topRate =
+      total > 0 &&
+      topReason
+        ? (topReason.count / total) *
+          100
+        : 0;
+
+    return {
+      total,
+      distinctCount,
+      topReason,
+      topRate,
+      reasons,
+    };
+  }, [filteredIssueRows]);
+
+  const issueSummaryText =
+    useMemo(() => {
+      const {
+        total,
+        distinctCount,
+        topReason,
+        topRate,
+      } =
+        issueReasonSummary;
+
+      if (
+        total === 0 ||
+        !topReason
+      ) {
+        return "";
+      }
+
+      if (distinctCount === 1) {
+        return (
+          `${getIssueFilterLabel(issueFilter)} ${total.toLocaleString()}건 모두 ` +
+          `동일한 사유로 발생했습니다.`
+        );
+      }
+
+      if (topRate >= 70) {
+        return (
+          `${getIssueFilterLabel(issueFilter)} ${total.toLocaleString()}건 중 ` +
+          `${topReason.count.toLocaleString()}건` +
+          `(${topRate.toFixed(1)}%)이 같은 사유입니다. ` +
+          `공통 원인일 가능성이 높습니다.`
+        );
+      }
+
+      return (
+        `${getIssueFilterLabel(issueFilter)} ${total.toLocaleString()}건이 ` +
+        `${distinctCount.toLocaleString()}개의 서로 다른 ` +
+        `사유로 나뉘어 있습니다.`
+      );
+    }, [issueReasonSummary, issueFilter]);
+
   /* =========================================================
      화면
      ========================================================= */
@@ -1547,17 +1686,108 @@ export default function Home() {
             </div>
 
             <div className="issue-count-summary">
-              <span className="issue-count warning">
-                재확인{" "}
-                {verificationSummary.review.toLocaleString()}
-              </span>
+  <button
+    type="button"
+    className={`issue-count warning ${
+      issueFilter === "review"
+        ? "active"
+        : ""
+    }`}
+    onClick={() =>
+      setIssueFilter(
+        issueFilter === "review"
+          ? "all"
+          : "review"
+      )
+    }
+  >
+    재확인{" "}
+    {verificationSummary.review.toLocaleString()}
+  </button>
 
-              <span className="issue-count error">
-                오류{" "}
-                {verificationSummary.error.toLocaleString()}
-              </span>
-            </div>
+  <button
+    type="button"
+    className={`issue-count error ${
+      issueFilter === "error"
+        ? "active"
+        : ""
+    }`}
+    onClick={() =>
+      setIssueFilter(
+        issueFilter === "error"
+          ? "all"
+          : "error"
+      )
+    }
+  >
+    오류{" "}
+    {verificationSummary.error.toLocaleString()}
+  </button>
+</div>
           </div>
+
+          {issueReasonSummary.total > 0 && (
+            <div className="issue-analysis-summary">
+              <div className="issue-analysis-icon">
+                i
+              </div>
+
+              <div className="issue-analysis-content">
+                <strong>
+                  {issueSummaryText}
+                </strong>
+
+                {issueReasonSummary.topReason && (
+                  <p>
+                    가장 많은 사유:{" "}
+                    <b>
+                      {
+                        issueReasonSummary
+                          .topReason.reason
+                      }
+                    </b>
+                    {" · "}
+                    {
+                      issueReasonSummary
+                        .topReason.count
+                        .toLocaleString()
+                    }
+                    건
+                    {" · "}
+                    {
+                      issueReasonSummary
+                        .topRate
+                        .toFixed(1)
+                    }
+                    %
+                  </p>
+                )}
+
+                {issueReasonSummary.distinctCount > 1 && (
+                  <div className="issue-reason-tags">
+                    {issueReasonSummary.reasons
+                      .slice(0, 3)
+                      .map(
+                        ({
+                          reason,
+                          count,
+                        }) => (
+                          <span
+                            key={reason}
+                          >
+                            {reason}
+                            {" "}
+                            <strong>
+                              {count.toLocaleString()}
+                            </strong>
+                          </span>
+                        )
+                      )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="verification-issue-table-wrapper">
             <table className="verification-issue-table">
@@ -1571,13 +1801,23 @@ export default function Home() {
               </thead>
 
               <tbody>
-                {verificationRows
-                  .filter(
-                    (row) =>
-                      row.status !== "정상"
-                  )
-                  .slice(0, 100)
-                  .map((row, index) => (
+                {filteredIssueRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="issue-empty-cell"
+                    >
+                      {issueFilter === "error"
+                        ? "오류로 판정된 지원자가 없습니다."
+                        : issueFilter === "review"
+                        ? "재확인이 필요한 지원자가 없습니다."
+                        : "확인이 필요한 지원자가 없습니다."}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredIssueRows
+                    .slice(0, 100)
+                    .map((row, index) => (
                     <tr
                       key={`${row.applicantNo}-${index}`}
                     >
@@ -1636,17 +1876,17 @@ export default function Home() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
-          {verificationRows.filter(
-            (row) =>
-              row.status !== "정상"
-          ).length > 100 && (
+          {filteredIssueRows.length > 100 && (
             <div className="issue-table-footer">
-              화면에는 최대 100건까지 표시됩니다.
+              현재 선택한 목록{" "}
+              {filteredIssueRows.length.toLocaleString()}
+              건 중 최대 100건까지 표시됩니다.
               전체 결과는 Excel 검증 보고서에서
               확인할 수 있습니다.
             </div>
@@ -2070,6 +2310,35 @@ function getValue(
   }
 
   return null;
+}
+
+function getIssueFilterLabel(
+  filter: "all" | "review" | "error"
+) {
+  if (filter === "review") {
+    return "재확인";
+  }
+
+  if (filter === "error") {
+    return "오류";
+  }
+
+  return "확인 필요";
+}
+
+function normalizeIssueReason(
+  reason: string | null | undefined
+) {
+  if (!reason) {
+    return "사유 미기재";
+  }
+
+  const normalized =
+    String(reason)
+      .replace(/\s+/g, " ")
+      .trim();
+
+  return normalized || "사유 미기재";
 }
 
 function getVerificationScoreValues(
