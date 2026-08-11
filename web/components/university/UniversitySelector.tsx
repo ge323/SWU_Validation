@@ -30,7 +30,7 @@ const universities: University[] = [
     code: "snut",
     shortName: "서울과기대",
     fullName: "서울과학기술대학교",
-    enabled: true,
+    enabled: false,
   },
   {
     code: "gachon",
@@ -42,7 +42,7 @@ const universities: University[] = [
     code: "konkuk",
     shortName: "건국대",
     fullName: "건국대학교",
-    enabled: false,
+    enabled: true,
   },
   {
     code: "khu",

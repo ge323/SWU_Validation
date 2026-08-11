@@ -1,21 +1,53 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useState,
+} from "react";
+
+import * as XLSX from "xlsx";
 
 import UniversitySelector from "../components/university/UniversitySelector";
-import type { UniversityCode } from "../components/university/UniversitySelector";
+
+import type {
+  UniversityCode,
+} from "../components/university/UniversitySelector";
 
 import ExcelUploader from "../components/upload/ExcelUploader";
+
+import UniversityEvidence from "../components/verification/UniversityEvidence";
 
 import {
   parseExcelFiles,
   type ExcelRow,
 } from "../lib/excel/parser";
 
-type StepStatus =
-  | "complete"
-  | "active"
-  | "waiting";
+import {
+  validateUniversityData,
+  type UniversityDataValidationResult,
+} from "../components/university/validateUniversityData";
+
+type VerificationStatus =
+  | "정상"
+  | "재확인 필요"
+  | "오류";
+
+type VerificationRow = {
+  applicantNo: string;
+  status: VerificationStatus;
+  originalScore?: number | null;
+  calculatedScore?: number | null;
+  difference?: number | null;
+  reason?: string | null;
+  raw: ExcelRow;
+};
+
+type VerificationSummary = {
+  total: number;
+  normal: number;
+  review: number;
+  error: number;
+};
 
 export default function Home() {
   /* =========================================================
@@ -57,6 +89,53 @@ export default function Home() {
 
   const [columns, setColumns] =
     useState<string[]>([]);
+
+  const [
+    universityDataValidation,
+    setUniversityDataValidation,
+  ] =
+    useState<UniversityDataValidationResult | null>(
+      null
+    );
+
+  /* =========================================================
+     검증 결과 상태
+     ========================================================= */
+
+  const [
+    verificationRows,
+    setVerificationRows,
+  ] = useState<VerificationRow[]>([]);
+
+  const [
+    verificationSummary,
+    setVerificationSummary,
+  ] = useState<VerificationSummary>({
+    total: 0,
+    normal: 0,
+    review: 0,
+    error: 0,
+  });
+
+  const [isVerifying, setIsVerifying] =
+    useState(false);
+
+  const [
+    detailApplicantNo,
+    setDetailApplicantNo,
+  ] = useState("");
+
+  const [
+    selectedVerification,
+    setSelectedVerification,
+  ] = useState<VerificationRow | null>(
+    null
+  );
+
+  const [
+    detailSearchMessage,
+    setDetailSearchMessage,
+  ] = useState("");
 
   /* =========================================================
      검색
@@ -209,8 +288,26 @@ export default function Home() {
 
     setColumns([]);
 
+    setUniversityDataValidation(
+      null
+    );
+
     setSearchApplicantNo("");
 
+    setVerificationRows([]);
+
+    setVerificationSummary({
+      total: 0,
+      normal: 0,
+      review: 0,
+      error: 0,
+    });
+
+    setDetailApplicantNo("");
+    setSelectedVerification(null);
+    setDetailSearchMessage("");
+
+    setIsVerified(false);
     setIsAnalyzed(false);
   }
 
@@ -219,7 +316,10 @@ export default function Home() {
      ========================================================= */
 
   async function handleAnalyze() {
-    if (selectedFiles.length === 0) {
+    if (
+      selectedFiles.length === 0 ||
+      !selectedUniversity
+    ) {
       return;
     }
 
@@ -249,16 +349,28 @@ export default function Home() {
         result.columns
       );
 
+      const validation =
+        validateUniversityData(
+          selectedUniversity,
+          result.rows,
+          result.columns,
+          selectedFiles
+        );
+
+      setUniversityDataValidation(
+        validation
+      );
+
       setIsAnalyzed(true);
       setIsVerified(false);
     } catch (error) {
       console.error(
-        "Excel 분석 오류:",
+        "데이터 분석 오류:",
         error
       );
 
       alert(
-        "Excel 파일 분석 중 오류가 발생했습니다."
+        "파일 분석 중 오류가 발생했습니다."
       );
     } finally {
       setIsAnalyzing(false);
@@ -269,28 +381,369 @@ export default function Home() {
      전체 검증
      ========================================================= */
 
-  function handleVerify() {
+  async function handleVerify() {
     if (!isAnalyzed) {
       return;
     }
 
-    /*
-     * TODO
-     *
-     * 다음 단계에서:
-     *
-     * selectedUniversity
-     *      ↓
-     * 대학별 검증 API
-     *      ↓
-     * SQL Server
-     *      ↓
-     * 검증 결과
-     *
-     * 구조로 연결
-     */
+    if (!universityDataValidation) {
+      alert(
+        "업로드 데이터 적합성 검사가 필요합니다."
+      );
 
-    setIsVerified(true);
+      return;
+    }
+
+    if (!universityDataValidation.isValid) {
+      alert(
+        "선택한 대학의 데이터 구조와 일치하지 않아 검증을 진행할 수 없습니다."
+      );
+
+      return;
+    }
+
+    try {
+      setIsVerifying(true);
+
+      /*
+       * 현재 1차 구현:
+       * 업로드된 결과 파일의 상태/점수 컬럼을 기준으로
+       * 전체 검증 결과를 구성한다.
+       *
+       * 이후 대학별 SQL/API가 준비되면
+       * 이 부분을 API 호출 결과로 교체하면 된다.
+       */
+      const results: VerificationRow[] =
+        excelRows.map((row) => {
+          const applicantNo =
+            String(
+              getValue(
+                row,
+                "수험번호",
+                "수험자번호",
+                "지원자번호",
+                "접수번호",
+                "applicantNo"
+              ) ?? ""
+            ).trim();
+
+          const sourceStatus =
+            String(
+              getValue(
+                row,
+                "검증상태",
+                "검증결과",
+                "산출결과"
+              ) ?? ""
+            ).trim();
+
+          const originalScore =
+            toNullableNumber(
+              getValue(
+                row,
+                "실제반영_학생부점수",
+                "대학제공점수",
+                "제공점수",
+                "학생부점수"
+              )
+            );
+
+          const calculatedScore =
+            toNullableNumber(
+              getValue(
+                row,
+                "최종_학생부점수",
+                "해당전형교과정량점수",
+                "재계산점수",
+                "검증점수"
+              )
+            );
+
+          let difference: number | null =
+            null;
+
+          if (
+            originalScore !== null &&
+            calculatedScore !== null
+          ) {
+            difference =
+              calculatedScore -
+              originalScore;
+          }
+
+          let status: VerificationStatus =
+            "재확인 필요";
+
+          if (
+            sourceStatus.includes("오류") ||
+            sourceStatus.includes("실패") ||
+            sourceStatus.includes("불일치")
+          ) {
+            status = "오류";
+          } else if (
+            sourceStatus.includes("완료") ||
+            sourceStatus.includes("정상") ||
+            sourceStatus.includes("일치")
+          ) {
+            status = "정상";
+          } else if (
+            difference !== null &&
+            Math.abs(difference) < 0.000001
+          ) {
+            status = "정상";
+          }
+
+          return {
+            applicantNo,
+            status,
+            originalScore,
+            calculatedScore,
+            difference,
+            reason:
+              sourceStatus || null,
+            raw: row,
+          };
+        });
+
+      const summary =
+        results.reduce<VerificationSummary>(
+          (acc, result) => {
+            acc.total += 1;
+
+            if (
+              result.status === "정상"
+            ) {
+              acc.normal += 1;
+            } else if (
+              result.status ===
+              "재확인 필요"
+            ) {
+              acc.review += 1;
+            } else {
+              acc.error += 1;
+            }
+
+            return acc;
+          },
+          {
+            total: 0,
+            normal: 0,
+            review: 0,
+            error: 0,
+          }
+        );
+
+      setVerificationRows(results);
+      setVerificationSummary(summary);
+      setSelectedVerification(null);
+      setDetailApplicantNo("");
+      setDetailSearchMessage("");
+      setIsVerified(true);
+    } catch (error) {
+      console.error(
+        "전체 검증 오류:",
+        error
+      );
+
+      alert(
+        "전체 검증 중 오류가 발생했습니다."
+      );
+    } finally {
+      setIsVerifying(false);
+    }
+  }
+
+  /* =========================================================
+     수험생 상세 조회
+     ========================================================= */
+
+  function handleApplicantSearch() {
+    const applicantNo =
+      detailApplicantNo.trim();
+
+    if (!applicantNo) {
+      setSelectedVerification(null);
+
+      setDetailSearchMessage(
+        "수험번호를 입력해주세요."
+      );
+
+      return;
+    }
+
+    const result =
+      verificationRows.find(
+        (row) =>
+          row.applicantNo ===
+          applicantNo
+      );
+
+    if (!result) {
+      setSelectedVerification(null);
+
+      setDetailSearchMessage(
+        `${applicantNo} 수험번호의 검증 결과를 찾을 수 없습니다.`
+      );
+
+      return;
+    }
+
+    setSelectedVerification(result);
+    setDetailSearchMessage("");
+  }
+
+  /* =========================================================
+     Excel 검증 보고서 다운로드
+     ========================================================= */
+
+  function handleDownloadVerification() {
+    if (
+      verificationRows.length === 0
+    ) {
+      alert(
+        "다운로드할 검증 결과가 없습니다."
+      );
+
+      return;
+    }
+
+    const workbook =
+      XLSX.utils.book_new();
+
+    const universityName =
+      selectedUniversity
+        ? getUniversityName(
+            selectedUniversity
+          )
+        : "대학";
+
+    const agreementRate =
+      verificationSummary.total === 0
+        ? 0
+        : (
+            verificationSummary.normal /
+            verificationSummary.total
+          ) * 100;
+
+    /* Sheet 01: 검증요약 */
+    const summaryData = [
+      {
+        대학: universityName,
+        업로드파일수:
+          selectedFiles.length,
+        전체지원자:
+          verificationSummary.total,
+        정상:
+          verificationSummary.normal,
+        재확인필요:
+          verificationSummary.review,
+        오류:
+          verificationSummary.error,
+        정상비율:
+          `${agreementRate.toFixed(2)}%`,
+      },
+    ];
+
+    const summarySheet =
+      XLSX.utils.json_to_sheet(
+        summaryData
+      );
+
+    summarySheet["!autofilter"] = {
+      ref: summarySheet["!ref"] ?? "A1:G2",
+    };
+
+    summarySheet["!cols"] = [
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      summarySheet,
+      "검증요약"
+    );
+
+    /* Sheet 02: 전체검증결과 */
+    const resultData =
+      verificationRows.map(
+        (row) => ({
+          수험번호:
+            row.applicantNo,
+          검증상태:
+            row.status,
+          검증사유:
+            row.reason ?? "",
+          대학제공값:
+            row.originalScore ?? "",
+          재계산값:
+            row.calculatedScore ?? "",
+          차이:
+            row.difference ?? "",
+        })
+      );
+
+    const resultSheet =
+      XLSX.utils.json_to_sheet(
+        resultData
+      );
+
+    resultSheet["!autofilter"] = {
+      ref:
+        resultSheet["!ref"] ??
+        "A1:F1",
+    };
+
+    resultSheet["!cols"] = [
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 14 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      resultSheet,
+      "전체검증결과"
+    );
+
+    /* Sheet 03: 성적산출근거 */
+    const evidenceData =
+      excelRows.map(
+        ({ sourceFile, ...row }) => ({
+          ...row,
+          원본파일: sourceFile,
+        })
+      );
+
+    const evidenceSheet =
+      XLSX.utils.json_to_sheet(
+        evidenceData
+      );
+
+    evidenceSheet["!autofilter"] = {
+      ref:
+        evidenceSheet["!ref"] ??
+        "A1:A1",
+    };
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      evidenceSheet,
+      "성적산출근거"
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `${universityName}_성적검증결과.xlsx`
+    );
   }
 
   /* =========================================================
@@ -628,6 +1081,84 @@ export default function Home() {
 
                 </div>
 
+                {universityDataValidation && (
+                  <div
+                    className={`university-validation-card ${
+                      universityDataValidation.isValid
+                        ? "valid"
+                        : "invalid"
+                    }`}
+                  >
+                    <div className="university-validation-header">
+                      <div>
+                        <span>데이터 적합성 검사</span>
+                        <strong>
+                          {universityDataValidation.universityName}
+                        </strong>
+                      </div>
+
+                      <span
+                        className={`validation-status ${
+                          universityDataValidation.isValid
+                            ? "valid"
+                            : "invalid"
+                        }`}
+                      >
+                        {universityDataValidation.isValid
+                          ? "검증 가능"
+                          : "구조 불일치"}
+                      </span>
+                    </div>
+
+                    <div className="validation-info-grid">
+                      <ValidationInfo
+                        label="데이터 행"
+                        value={`${totalRows.toLocaleString()}건`}
+                        valid={totalRows > 0}
+                      />
+
+                      <ValidationInfo
+                        label="필수 데이터"
+                        value={`${universityDataValidation.matchedRequiredColumns.length} / ${universityDataValidation.totalRequiredColumns}`}
+                        valid={
+                          universityDataValidation.missingRequiredColumns.length === 0
+                        }
+                      />
+
+                      <ValidationInfo
+                        label="파일명 참고"
+                        value={
+                          universityDataValidation.fileNameMatched
+                            ? "대학명 확인"
+                            : "일치 정보 없음"
+                        }
+                        valid={universityDataValidation.fileNameMatched}
+                      />
+
+                      <ValidationInfo
+                        label="구조 적합도"
+                        value={`${universityDataValidation.score}%`}
+                        valid={universityDataValidation.isValid}
+                      />
+                    </div>
+
+                    <div className="validation-message">
+                      {universityDataValidation.message}
+                    </div>
+
+                    {universityDataValidation.missingRequiredColumns.length > 0 && (
+                      <div className="missing-columns">
+                        <strong>누락된 필수 데이터</strong>
+                        <div>
+                          {universityDataValidation.missingRequiredColumns.map((column) => (
+                            <span key={column}>{column}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* -----------------------------------------
                     데이터 안내
                 ------------------------------------------ */}
@@ -877,8 +1408,14 @@ export default function Home() {
                   onClick={
                     handleVerify
                   }
+                  disabled={
+                    !universityDataValidation?.isValid ||
+                    isVerifying
+                  }
                 >
-                  전체 검증 시작
+                  {isVerifying
+                    ? "검증 중..."
+                    : "전체 검증 시작"}
                 </button>
 
               )}
@@ -896,8 +1433,9 @@ export default function Home() {
                 </strong>
 
                 <p>
-                  다음 단계에서 대학별
-                  SQL 검증 API를 연결합니다.
+                  데이터 적합성 검사가 통과되면
+                  선택한 대학의 SQL 검증 로직을
+                  실행할 수 있습니다.
                 </p>
 
               </div>
@@ -911,25 +1449,31 @@ export default function Home() {
                   <ResultCard
                     label="전체 지원자"
                     value={
-                      totalApplicants.toLocaleString()
+                      verificationSummary.total.toLocaleString()
                     }
                   />
 
                   <ResultCard
                     label="정상"
-                    value="-"
+                    value={
+                      verificationSummary.normal.toLocaleString()
+                    }
                     status="success"
                   />
 
                   <ResultCard
                     label="재확인 필요"
-                    value="-"
+                    value={
+                      verificationSummary.review.toLocaleString()
+                    }
                     status="warning"
                   />
 
                   <ResultCard
                     label="오류"
-                    value="-"
+                    value={
+                      verificationSummary.error.toLocaleString()
+                    }
                     status="error"
                   />
 
@@ -940,16 +1484,14 @@ export default function Home() {
                   <div>
 
                     <strong>
-                      SQL 검증 API 연결 대기
+                      1차 검증 결과 생성 완료
                     </strong>
 
                     <p>
-                      현재 Excel 원본 데이터
-                      조회까지 완료되었습니다.
-                      다음 단계에서 기존
-                      서울과기대 / 숭의여대
-                      SQL 검증 로직을
-                      연결합니다.
+                      현재는 업로드된 결과 파일의
+                      검증상태와 점수 컬럼을 기준으로
+                      결과를 집계합니다. 대학별 산출 근거는
+                      선택한 대학 전용 화면으로 표시됩니다.
                     </p>
 
                   </div>
@@ -1010,6 +1552,19 @@ export default function Home() {
                 <input
                   id="detailApplicantNo"
                   type="text"
+                  value={detailApplicantNo}
+                  onChange={(event) =>
+                    setDetailApplicantNo(
+                      event.target.value
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter"
+                    ) {
+                      handleApplicantSearch();
+                    }
+                  }}
                   placeholder="예: 26087000073"
                 />
 
@@ -1018,11 +1573,152 @@ export default function Home() {
               <button
                 type="button"
                 className="primary-button"
+                onClick={
+                  handleApplicantSearch
+                }
               >
                 조회
               </button>
 
             </div>
+
+            {detailSearchMessage && (
+              <div className="applicant-search-message">
+                {detailSearchMessage}
+              </div>
+            )}
+
+            {selectedVerification && (
+              <div className="applicant-detail-result">
+                <div className="applicant-detail-header">
+                  <div>
+                    <span>조회 수험번호</span>
+
+                    <strong>
+                      {selectedVerification.applicantNo}
+                    </strong>
+                  </div>
+
+                  <span
+                    className={`detail-status-badge ${
+                      selectedVerification.status === "정상"
+                        ? "success"
+                        : selectedVerification.status === "오류"
+                        ? "error"
+                        : "warning"
+                    }`}
+                  >
+                    {selectedVerification.status}
+                  </span>
+                </div>
+
+                <div className="applicant-detail-summary">
+                  <DetailSummaryItem
+                    label="수험번호"
+                    value={
+                      selectedVerification.applicantNo
+                    }
+                  />
+
+                  <DetailSummaryItem
+                    label="검증 상태"
+                    value={
+                      selectedVerification.status
+                    }
+                  />
+
+                  <DetailSummaryItem
+                    label="대학 제공값"
+                    value={
+                      formatNullableNumber(
+                        selectedVerification.originalScore
+                      )
+                    }
+                  />
+
+                  <DetailSummaryItem
+                    label="재계산값"
+                    value={
+                      formatNullableNumber(
+                        selectedVerification.calculatedScore
+                      )
+                    }
+                  />
+
+                  <DetailSummaryItem
+                    label="차이"
+                    value={
+                      formatNullableNumber(
+                        selectedVerification.difference
+                      )
+                    }
+                  />
+
+                  <DetailSummaryItem
+                    label="검증 사유"
+                    value={
+                      selectedVerification.reason ??
+                      "-"
+                    }
+                  />
+                </div>
+
+                <div className="applicant-original-data">
+                  <div className="applicant-original-title">
+                    <strong>
+                      수험생 원본 데이터
+                    </strong>
+
+                    <p>
+                      업로드 파일에서 해당 수험번호와
+                      일치한 원본 행입니다.
+                    </p>
+                  </div>
+
+                  <div className="data-table-wrapper">
+                    <table className="student-data-table">
+                      <thead>
+                        <tr>
+                          {visibleColumns.map(
+                            (column) => (
+                              <th key={column}>
+                                {column}
+                              </th>
+                            )
+                          )}
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        <tr>
+                          {visibleColumns.map(
+                            (column) => (
+                              <td
+                                key={column}
+                                title={
+                                  selectedVerification.raw[column] ===
+                                    undefined ||
+                                  selectedVerification.raw[column] ===
+                                    null
+                                    ? ""
+                                    : String(
+                                        selectedVerification.raw[column]
+                                      )
+                                }
+                              >
+                                {displayValue(
+                                  selectedVerification.raw[column]
+                                )}
+                              </td>
+                            )
+                          )}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* -----------------------------------------------
                 06 성적 산출 근거
@@ -1043,64 +1739,40 @@ export default function Home() {
                   </h3>
 
                   <p>
-                    어떤 과목이 반영되었고,
-                    어떤 계산을 통해
-                    최종 점수가 산출되었는지
-                    보여주는 영역입니다.
+                    선택한 대학의 성적 산출 기준에 따라
+                    반영 과정과 최종 계산 근거를
+                    확인하는 영역입니다.
                   </p>
 
                 </div>
 
               </div>
 
-              <div className="verification-flow">
-
-                <FlowItem
-                  number="1"
-                  title="원본 학생부"
-                  description="업로드된 학생부 원본 확인"
+              {selectedVerification &&
+              selectedUniversity ? (
+                <UniversityEvidence
+                  university={
+                    selectedUniversity
+                  }
+                  row={
+                    selectedVerification.raw
+                  }
+                  status={
+                    selectedVerification.status
+                  }
                 />
+              ) : (
+                <div className="empty-state evidence-empty">
+                  <strong>
+                    수험번호를 조회해주세요.
+                  </strong>
 
-                <FlowArrow />
-
-                <FlowItem
-                  number="2"
-                  title="반영 기준"
-                  description="대학·전형별 성적 반영 규칙 적용"
-                />
-
-                <FlowArrow />
-
-                <FlowItem
-                  number="3"
-                  title="과목 판정"
-                  description="반영·미반영 과목 및 사유 확인"
-                />
-
-                <FlowArrow />
-
-                <FlowItem
-                  number="4"
-                  title="최종 계산"
-                  description="환산점수·가중점수·최종값 비교"
-                />
-
-              </div>
-
-              <div className="empty-state evidence-empty">
-
-                <strong>
-                  수험번호를 조회해주세요.
-                </strong>
-
-                <p>
-                  조회 후 과목별 반영 여부,
-                  반영 사유, 이수단위,
-                  환산점수, 가중점수와
-                  최종 계산식이 표시됩니다.
-                </p>
-
-              </div>
+                  <p>
+                    조회 후 선택한 대학의 성적 산출 방식에
+                    맞는 검증 근거가 표시됩니다.
+                  </p>
+                </div>
+              )}
 
             </div>
 
@@ -1169,6 +1841,9 @@ export default function Home() {
               <button
                 type="button"
                 className="primary-button"
+                onClick={
+                  handleDownloadVerification
+                }
               >
                 Excel 검증 보고서 다운로드
               </button>
@@ -1259,6 +1934,93 @@ function displayValue(
   return String(value);
 }
 
+function toNullableNumber(
+  value: unknown
+): number | null {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const numericValue =
+    Number(
+      String(value).replace(
+        /,/g,
+        ""
+      )
+    );
+
+  return Number.isFinite(
+    numericValue
+  )
+    ? numericValue
+    : null;
+}
+
+function formatNullableNumber(
+  value: number | null | undefined
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "-";
+  }
+
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(
+        undefined,
+        {
+          maximumFractionDigits: 6,
+        }
+      );
+}
+
+/* =========================================================
+   Detail Summary
+   ========================================================= */
+
+function DetailSummaryItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="detail-summary-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+/* =========================================================
+   Validation Info
+   ========================================================= */
+
+function ValidationInfo({
+  label,
+  value,
+  valid,
+}: {
+  label: string;
+  value: string;
+  valid: boolean;
+}) {
+  return (
+    <div className="validation-info-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{valid ? "✓" : "!"}</small>
+    </div>
+  );
+}
+
 /* =========================================================
    Summary Card
    ========================================================= */
@@ -1320,49 +2082,6 @@ function ResultCard({
 
       <strong>{value}</strong>
     </div>
-  );
-}
-
-/* =========================================================
-   Verification Flow
-   ========================================================= */
-
-function FlowItem({
-  number,
-  title,
-  description,
-}: {
-  number: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flow-item">
-
-      <span className="flow-number">
-        {number}
-      </span>
-
-      <strong>
-        {title}
-      </strong>
-
-      <p>
-        {description}
-      </p>
-
-    </div>
-  );
-}
-
-function FlowArrow() {
-  return (
-    <span
-      className="flow-arrow"
-      aria-hidden="true"
-    >
-      →
-    </span>
   );
 }
 
