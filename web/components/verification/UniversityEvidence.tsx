@@ -6,6 +6,7 @@ import type { ExcelRow } from "../../lib/excel/parser";
 
 import SwuEvidence from "./SwuEvidence";
 import KonkukEvidence from "./KonkukEvidence";
+import SnutEvidence from "./SnutEvidence";
 
 type UniversityEvidenceProps = {
   university: UniversityCode;
@@ -38,11 +39,12 @@ export default function UniversityEvidence({
       );
 
     case "snut":
-      return (
-        <EvidenceNotReady
-          universityName="서울과학기술대학교"
-        />
-      );
+  return (
+    <SnutEvidence
+      row={row}
+      status={status}
+    />
+  );
 
     case "gachon":
       return (
