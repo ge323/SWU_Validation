@@ -437,27 +437,21 @@ export default function Home() {
               ) ?? ""
             ).trim();
 
-          const originalScore =
-            toNullableNumber(
-              getValue(
-                row,
-                "실제반영_학생부점수",
-                "대학제공점수",
-                "제공점수",
-                "학생부점수"
-              )
+          /*
+           * 대학별 점수 컬럼은 서로 다르므로
+           * 선택 대학 기준으로 대학 제공값 / 재계산값을 분리해서 읽는다.
+           */
+          const scoreValues =
+            getVerificationScoreValues(
+              row,
+              selectedUniversity
             );
 
+          const originalScore =
+            scoreValues.originalScore;
+
           const calculatedScore =
-            toNullableNumber(
-              getValue(
-                row,
-                "최종_학생부점수",
-                "해당전형교과정량점수",
-                "재계산점수",
-                "검증점수"
-              )
-            );
+            scoreValues.calculatedScore;
 
           let difference: number | null =
             null;
@@ -471,24 +465,81 @@ export default function Home() {
               originalScore;
           }
 
+          /*
+           * 검증 사유는 단순 상태값보다
+           * 검증메시지 / 지원자격 판정을 우선해서 보여준다.
+           */
+          const verificationMessage =
+            String(
+              getValue(
+                row,
+                "검증메시지",
+                "검증사유",
+                "판정사유"
+              ) ?? ""
+            ).trim();
+
+          const qualificationStatus =
+            String(
+              getValue(
+                row,
+                "지원자격판정",
+                "자격판정",
+                "지원자격"
+              ) ?? ""
+            ).trim();
+
+          const reason =
+            verificationMessage ||
+            qualificationStatus ||
+            sourceStatus ||
+            null;
+
           let status: VerificationStatus =
             "재확인 필요";
 
+          /*
+           * 명확한 오류는 오류로 분류
+           */
           if (
             sourceStatus.includes("오류") ||
             sourceStatus.includes("실패") ||
             sourceStatus.includes("불일치")
           ) {
             status = "오류";
-          } else if (
+          }
+
+          /*
+           * 지원자격 부적격은 계산 시스템 오류가 아니라
+           * 담당자 확인이 필요한 결과이므로 재확인 필요로 분류
+           */
+          else if (
+            sourceStatus.includes("부적격") ||
+            qualificationStatus.includes(
+              "부적격"
+            )
+          ) {
+            status = "재확인 필요";
+          }
+
+          /*
+           * 대학 결과에서 정상/완료/일치로 명시된 경우
+           */
+          else if (
             sourceStatus.includes("완료") ||
             sourceStatus.includes("정상") ||
             sourceStatus.includes("일치")
           ) {
             status = "정상";
-          } else if (
+          }
+
+          /*
+           * 상태값이 없더라도 두 점수가 정확히 같으면 정상
+           */
+          else if (
             difference !== null &&
-            Math.abs(difference) < 0.000001
+            Math.abs(difference) <
+              0.000001
           ) {
             status = "정상";
           }
@@ -499,8 +550,7 @@ export default function Home() {
             originalScore,
             calculatedScore,
             difference,
-            reason:
-              sourceStatus || null,
+            reason,
             raw: row,
           };
         });
@@ -1372,138 +1422,240 @@ export default function Home() {
         ==================================================== */}
 
         {isAnalyzed && (
+<section className="content-card">
+  <div className="section-heading-row">
+    <div className="section-heading">
+      <span className="section-index">
+        04
+      </span>
 
-          <section className="content-card">
+      <div>
+        <h2>전체 성적 검증</h2>
 
-            <div className="card-heading">
+        <p>
+          선택 대학의 성적 산출 규칙과 검증 로직을
+          전체 지원자에게 적용합니다.
+        </p>
+      </div>
+    </div>
 
-              <div>
+    {!isVerified && (
+      <button
+        type="button"
+        className="primary-button"
+        onClick={handleVerify}
+        disabled={
+          !universityDataValidation?.isValid ||
+          isVerifying
+        }
+      >
+        {isVerifying
+          ? "검증 중..."
+          : "전체 검증 시작"}
+      </button>
+    )}
+  </div>
 
-                <span className="section-index">
-                  04
-                </span>
+  {/* -----------------------------------------
+      검증 전
+  ------------------------------------------ */}
 
-                <div>
+  {!isVerified ? (
+    <div className="verification-ready-box">
+      <strong>
+        전체 데이터를 검증할 준비가 완료되었습니다.
+      </strong>
 
-                  <h2>
-                    전체 성적 검증
-                  </h2>
+      <p>
+        데이터 적합성 검사가 통과되면 선택한 대학의
+        성적 검증 로직을 실행할 수 있습니다.
+      </p>
+    </div>
+  ) : (
+    <>
+      {/* -----------------------------------------
+          검증 결과 요약
+      ------------------------------------------ */}
 
-                  <p>
-                    선택 대학의 성적 산출
-                    규칙과 SQL 검증 로직을
-                    전체 지원자에게
-                    적용합니다.
-                  </p>
+      <div className="result-summary-grid">
+        <ResultCard
+          label="전체 지원자"
+          value={
+            verificationSummary.total.toLocaleString()
+          }
+        />
 
-                </div>
+        <ResultCard
+          label="정상"
+          value={
+            verificationSummary.normal.toLocaleString()
+          }
+          status="success"
+        />
 
-              </div>
+        <ResultCard
+          label="재확인 필요"
+          value={
+            verificationSummary.review.toLocaleString()
+          }
+          status="warning"
+        />
 
-              {!isVerified && (
+        <ResultCard
+          label="오류"
+          value={
+            verificationSummary.error.toLocaleString()
+          }
+          status="error"
+        />
+      </div>
 
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={
-                    handleVerify
-                  }
-                  disabled={
-                    !universityDataValidation?.isValid ||
-                    isVerifying
-                  }
-                >
-                  {isVerifying
-                    ? "검증 중..."
-                    : "전체 검증 시작"}
-                </button>
+      {/* -----------------------------------------
+          검증 완료 안내
+      ------------------------------------------ */}
 
-              )}
+      <div className="verification-notice">
+        <strong>
+          1차 검증 결과 생성 완료
+        </strong>
 
+        <p>
+          현재는 업로드된 결과 파일의 검증상태와
+          점수 컬럼을 기준으로 결과를 집계합니다.
+          대학별 산출 근거는 선택한 대학 전용 화면에서
+          확인할 수 있습니다.
+        </p>
+      </div>
+
+      {/* -----------------------------------------
+          확인 필요 항목
+      ------------------------------------------ */}
+
+      {(verificationSummary.review > 0 ||
+        verificationSummary.error > 0) && (
+        <div className="verification-issue-section">
+          <div className="verification-issue-header">
+            <div>
+              <strong>
+                확인 필요 항목
+              </strong>
+
+              <p>
+                재확인 또는 오류로 판정된 지원자만
+                모아서 확인할 수 있습니다.
+              </p>
             </div>
 
-            {!isVerified ? (
+            <div className="issue-count-summary">
+              <span className="issue-count warning">
+                재확인{" "}
+                {verificationSummary.review.toLocaleString()}
+              </span>
 
-              <div className="empty-state">
+              <span className="issue-count error">
+                오류{" "}
+                {verificationSummary.error.toLocaleString()}
+              </span>
+            </div>
+          </div>
 
-                <strong>
-                  전체 데이터를
-                  검증할 준비가
-                  완료되었습니다.
-                </strong>
+          <div className="verification-issue-table-wrapper">
+            <table className="verification-issue-table">
+              <thead>
+                <tr>
+                  <th>수험번호</th>
+                  <th>상태</th>
+                  <th>검증 사유</th>
+                  <th>상세</th>
+                </tr>
+              </thead>
 
-                <p>
-                  데이터 적합성 검사가 통과되면
-                  선택한 대학의 SQL 검증 로직을
-                  실행할 수 있습니다.
-                </p>
+              <tbody>
+                {verificationRows
+                  .filter(
+                    (row) =>
+                      row.status !== "정상"
+                  )
+                  .slice(0, 100)
+                  .map((row, index) => (
+                    <tr
+                      key={`${row.applicantNo}-${index}`}
+                    >
+                      <td className="applicant-number-cell">
+                        {row.applicantNo || "-"}
+                      </td>
 
-              </div>
+                      <td>
+                        <span
+                          className={`issue-status ${
+                            row.status === "오류"
+                              ? "error"
+                              : "warning"
+                          }`}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
 
-            ) : (
+                      <td className="issue-reason-cell">
+                        {row.reason ?? "-"}
+                      </td>
 
-              <>
+                      <td>
+                        <button
+                          type="button"
+                          className="table-detail-button"
+                          onClick={() => {
+                            setDetailApplicantNo(
+                              row.applicantNo
+                            );
 
-                <div className="verification-result-grid">
+                            setSelectedVerification(
+                              row
+                            );
 
-                  <ResultCard
-                    label="전체 지원자"
-                    value={
-                      verificationSummary.total.toLocaleString()
-                    }
-                  />
+                            setDetailSearchMessage(
+                              ""
+                            );
 
-                  <ResultCard
-                    label="정상"
-                    value={
-                      verificationSummary.normal.toLocaleString()
-                    }
-                    status="success"
-                  />
+                            setTimeout(() => {
+                              document
+                                .getElementById(
+                                  "detailApplicantNo"
+                                )
+                                ?.scrollIntoView({
+                                  behavior:
+                                    "smooth",
+                                  block:
+                                    "center",
+                                });
+                            }, 0);
+                          }}
+                        >
+                          상세보기
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
 
-                  <ResultCard
-                    label="재확인 필요"
-                    value={
-                      verificationSummary.review.toLocaleString()
-                    }
-                    status="warning"
-                  />
-
-                  <ResultCard
-                    label="오류"
-                    value={
-                      verificationSummary.error.toLocaleString()
-                    }
-                    status="error"
-                  />
-
-                </div>
-
-                <div className="notice-box">
-
-                  <div>
-
-                    <strong>
-                      1차 검증 결과 생성 완료
-                    </strong>
-
-                    <p>
-                      현재는 업로드된 결과 파일의
-                      검증상태와 점수 컬럼을 기준으로
-                      결과를 집계합니다. 대학별 산출 근거는
-                      선택한 대학 전용 화면으로 표시됩니다.
-                    </p>
-
-                  </div>
-
-                </div>
-
-              </>
-
-            )}
-
-          </section>
-
+          {verificationRows.filter(
+            (row) =>
+              row.status !== "정상"
+          ).length > 100 && (
+            <div className="issue-table-footer">
+              화면에는 최대 100건까지 표시됩니다.
+              전체 결과는 Excel 검증 보고서에서
+              확인할 수 있습니다.
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )}
+</section>
         )}
 
         {/* ===================================================
@@ -1628,7 +1780,7 @@ export default function Home() {
                   />
 
                   <DetailSummaryItem
-                    label="대학 제공값"
+                    label="대학 제공/비교값"
                     value={
                       formatNullableNumber(
                         selectedVerification.originalScore
@@ -1918,6 +2070,130 @@ function getValue(
   }
 
   return null;
+}
+
+function getVerificationScoreValues(
+  row: ExcelRow,
+  university: UniversityCode
+): {
+  originalScore: number | null;
+  calculatedScore: number | null;
+} {
+  /*
+   * 대학 제공값:
+   * 대학이 제공한 결과 또는 비교 대상 값
+   *
+   * 재계산값:
+   * 현재 검증 결과 파일에서 계산된 값
+   */
+  switch (university) {
+    case "swu":
+      return {
+        originalScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "실제반영_학생부점수",
+              "실제반영학생부점수",
+              "대학제공점수",
+              "제공점수"
+            )
+          ),
+
+        calculatedScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "최종_학생부점수",
+              "최종학생부점수",
+              "재계산점수",
+              "검증점수"
+            )
+          ),
+      };
+
+    case "snut":
+      return {
+        /*
+         * 서울과기대:
+         * 환산점수가 있으면 대학 제공 비교값으로 우선 사용.
+         * 없는 파일은 학생부환산점수원값을 참고값으로 사용.
+         */
+        originalScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "환산점수",
+              "대학제공환산점수",
+              "대학환산점수",
+              "학생부환산점수원값"
+            )
+          ),
+
+        calculatedScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "학생부환산점수",
+              "재계산환산점수",
+              "재계산점수",
+              "검증점수"
+            )
+          ),
+      };
+
+    case "konkuk":
+      return {
+        originalScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "대학제공점수",
+              "제공점수",
+              "교과정량점수",
+              "교과정량만점"
+            )
+          ),
+
+        calculatedScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "해당전형교과정량점수",
+              "교과산출점수10점",
+              "재계산점수",
+              "검증점수"
+            )
+          ),
+      };
+
+    case "gachon":
+    case "khu":
+    default:
+      return {
+        originalScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "대학제공점수",
+              "제공점수",
+              "학생부점수",
+              "환산점수"
+            )
+          ),
+
+        calculatedScore:
+          toNullableNumber(
+            getValue(
+              row,
+              "재계산점수",
+              "검증점수",
+              "최종점수",
+              "학생부환산점수"
+            )
+          ),
+      };
+  }
 }
 
 function displayValue(
